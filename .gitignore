@@ -1,0 +1,4 @@
+/gradle/wrapper/
+/build/
+/.gradle/
+src/test/

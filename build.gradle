@@ -1,0 +1,48 @@
+plugins {
+    id 'java'
+    id 'groovy'
+    id 'idea'
+}
+
+jar {
+        doFirst {
+            from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+        }
+        exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
+    manifest {
+        attributes(
+                'Main-Class': 'me.inertia.chembot.Main'
+        )
+    }
+    from {
+        configurations.extraLibs.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
+
+group 'org.example'
+version '0.0.1'
+
+sourceCompatibility = 1.8
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    // configuration that holds jars to include in the jar
+    extraLibs
+}
+
+dependencies {
+    implementation group: 'junit', name: 'junit', version: '4.12'
+    implementation 'org.javacord:javacord:3.1.1'
+    implementation 'org.json:json:20171018'
+    implementation 'org.jsoup:jsoup:1.13.1'
+    implementation 'com.ibm.cos:ibm-cos-java-sdk:2.8.0'
+
+    extraLibs group: 'junit', name: 'junit', version: '4.12'
+    extraLibs 'org.javacord:javacord:3.1.1'
+    extraLibs 'org.json:json:20171018'
+    extraLibs 'org.jsoup:jsoup:1.13.1'
+    extraLibs 'com.ibm.cos:ibm-cos-java-sdk:2.8.0'
+}
