@@ -1,0 +1,1 @@
+{"type":"exresponse","question":"sample_question","image":"N","answer":"sample extended response text","keywords":"sample,text,hippopotamus","data":{"questionID":"Question X","paper":"Paper Y","outcomes":"CH11-2","band":"3-4"},"marks":5}

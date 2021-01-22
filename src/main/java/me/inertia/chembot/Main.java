@@ -37,6 +37,7 @@ import com.ibm.cloud.objectstorage.services.s3.model.S3ObjectSummary;
 import com.ibm.cloud.objectstorage.oauth.BasicIBMOAuthCredentials;
 
 import static me.inertia.chembot.APIMethods.*;
+
 //important
 //may be necessary to have .contains checks for commands done as " keyword " instead of "keyword" to prevent triggering on words containing keyword
 
@@ -46,7 +47,7 @@ import static me.inertia.chembot.APIMethods.*;
 
 public class Main {
     public static int backupMinutes = 15;
-    public static boolean beta = true;
+    public static boolean beta = false;
     public static boolean debug = false;
     public static ArrayList<String> logOnChannel = new ArrayList<>();
 
@@ -62,6 +63,7 @@ public class Main {
         }
         return Color.black;
     }
+
     static AmazonS3 _cos;
     static String bucketName = "chembucket";
     private static String COS_ENDPOINT = "s3.au-syd.cloud-object-storage.appdomain.cloud"; // eg "https://s3.us.cloud-object-storage.appdomain.cloud"
@@ -69,6 +71,7 @@ public class Main {
     private static String COS_AUTH_ENDPOINT = "https://iam.cloud.ibm.com/identity/token";
     private static String COS_SERVICE_CRN = "crn:v1:bluemix:public:cloud-object-storage:global:a/2654c4e500c94a13b20d67dc294e8b7d:d748a6b1-d96d-491f-8bae-df5874643615"; // "crn:v1:bluemix:public:cloud-object-storage:global:a/<CREDENTIAL_ID_AS_GENERATED>:<SERVICE_ID_AS_GENERATED>::"
     private static String COS_BUCKET_LOCATION = "au-syd"; // eg "us"
+    static int questionsAmt = 1;
 
                         //server          user           dataKey  value
     public static HashMap<String, HashMap<String, HashMap<String,String>>> ServersData = new HashMap<>();
@@ -104,6 +107,7 @@ public class Main {
 
     public static String adminID = "258695315299893259";
     public static void main(String[] args) {
+
         if(beta){
             bucketName = "chembucketbeta";
         }
@@ -121,7 +125,7 @@ public class Main {
 
         //endregion
 
-            HashMap<String, Boolean> trivias = new HashMap<>();
+            HashMap<String, Boolean> questions = new HashMap<>();
             HashMap<String, ArrayList<String>> triviaBlackList = new HashMap<>();
             // Log the bot in
         DiscordApi api;
@@ -141,10 +145,10 @@ public class Main {
                     .login()
                     .join();
         }
-        api.updateActivity(ActivityType.CUSTOM,"C!help");
+        api.updateActivity(ActivityType.CUSTOM,"C.Help // ChemHelp");
         //api.getGroupChannelsByName()
-            ////System.out.println(api.createBotInvite());
-            // Add a listener which answers with "Pong!" if someone writes "!ping"
+            //System.out.println(api.createBotInvite());
+            // Add a listener which marks with "Pong!" if someone writes "!ping"
             api.addMessageCreateListener(event -> {
 
 
@@ -164,64 +168,65 @@ public class Main {
 
 
 
-                    if (event.getMessageContent().equalsIgnoreCase("jtrivia")) {
+                    if (event.getMessageContent().equalsIgnoreCase("c.trivia")||event.getMessageContent().equalsIgnoreCase("chemtrivia")) {
                         try {
-                            URL u = new URL("https://opentdb.com/api.php?amount=1");
-                            HttpURLConnection connection = (HttpURLConnection) u.openConnection();
-                            // open the stream and put it into BufferedReader
-                            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-                            String s = br.readLine();
-                            //System.out.println(s);
-                            JSONObject obj = new JSONObject(s);
-                            JSONArray trivia = obj.getJSONArray("results");
-                            String question = Jsoup.parse(trivia.getJSONObject(0).getString("question")).text();
-                            String difficulty = Jsoup.parse(trivia.getJSONObject(0).getString("difficulty")).text();
-                            String type = Jsoup.parse(trivia.getJSONObject(0).getString("type")).text();
-                            String answer = Jsoup.parse(trivia.getJSONObject(0).getString("correct_answer")).text();
-                            System.out.println("Constructed "+type+" trivia question for "+event.getMessageAuthor()+" asking \"" +question+ "\" with the answer" + answer);
-                            trivias.put(answer,true);
-                            ArrayList<String> strList = new ArrayList<>();
-                            ArrayList<String> stringList2 = new ArrayList<>();
-                            HashMap<Integer,String> strMap = new HashMap<>();
-                            if(!Objects.equals(type, "multiple")) {
-                                strList.add("true");
-                                strList.add("false");
-                                if(Objects.equals(type, "boolean")){
-                                    type = "true or false?";
-                                }
-                                new MessageBuilder()
-                                        .setEmbed(new EmbedBuilder()
-                                                .setTitle(difficulty + " - " + type)
-                                                .setDescription("Riddle me this: " + question)
-                                                .setFooter("Everyone has ONE MINUTE to answer!")
-                                                .setColor(getDiffColor(difficulty)))
-                                        .send(event.getChannel());
-                            }else{
-                                List<Object> objects = trivia.toList();
-                                String str = objects.get(0).toString();
-                                String incorrect = Jsoup.parse(str.substring(str.indexOf("incorrect_answers=[")+19,str.indexOf(']',str.indexOf("incorrect_answers=[")))).text();
-                                List<String> incorrectList = Arrays.asList(incorrect.split(","));
-                                strList = new ArrayList<>(incorrectList);
-                                strList.add(answer);
-                                Collections.shuffle(strList);
-                                stringList2.addAll(strList);
-
-                                if(stringList2.size()>0) {
-                                    for (int i = 0; i < stringList2.size(); i++) {
-                                        String temp = stringList2.get(i);
-                                        strMap.put(i,temp);
-                                        stringList2.set(i," "+(i+1)+") "+temp);
-                                    }
-                                }
-                                new MessageBuilder()
-                                        .setEmbed(new EmbedBuilder()
-                                                .setTitle(difficulty + " - " + type)
-                                                .setDescription("Riddle me this: " + question + "\n" + stringList2)
-                                                .setFooter("Everyone has ONE MINUTE to answer!")
-                                                .setColor(getDiffColor(difficulty)))
-                                        .send(event.getChannel());
+                            String randomQ = String.valueOf((int)(Math.floor(Math.abs(Math.random()-0.01f)*questionsAmt)));
+                            BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(("data/questions/"+randomQ+"/questionData.json"))));
+                            JSONObject obj = new JSONObject(br.readLine());
+                            String type = obj.getString("type");
+                            String question = obj.getString("question");
+                            boolean multi = false;
+                            if(obj.getString("image").equalsIgnoreCase("y")){
+                                //do some thing
                             }
-                            ArrayList<String> finalStrList = strList;
+                            ArrayList<String> answers = new ArrayList<>();
+                            if(type.equalsIgnoreCase("Multiple Choice")) {
+                                multi = true;
+                                JSONArray arr = obj.getJSONArray("answers");
+                                answers.add(arr.getJSONObject(0).getString("A"));
+                                answers.add(arr.getJSONObject(0).getString("B"));
+                                answers.add(arr.getJSONObject(0).getString("C"));
+                                answers.add(arr.getJSONObject(0).getString("D"));
+                            }
+                            String correct = obj.getString("correct");
+                            int marks = obj.getInt("marks");
+                            JSONObject extra = obj.getJSONObject("data");
+                            String questionID = "Question N/A";
+                            String paper = "Paper N/A";
+                            String outcomes = "Outcomes N/A";
+                            String band = "Band N/A";
+                            String difficulty = "easy";
+                            if (marks>=2) {
+                                difficulty = "medium";
+                                if(marks>=4){
+                                    difficulty = "hard";
+                                }
+                            }
+                            //important unhandled exceptions may cause issues later on
+                            try{
+                                questionID = extra.getString("questionID");
+                            }catch(Exception e){}
+                            try{
+                                paper = extra.getString("paper");
+                            }catch(Exception e){}
+                            try{
+                                outcomes = extra.getString("outcomes");
+                            }catch(Exception e){}
+                            try{
+                                band = extra.getString("band");
+                            }catch(Exception e){}
+                            String answersList = "";
+                            if(multi) answersList = "A: "+answers.get(0)+"\nB: "+answers.get(1)+"\nC: "+answers.get(2)+"\nD: "+answers.get(3)+"\n";
+
+                            System.out.println(answersList);
+                                new MessageBuilder()
+                                        .setEmbed(new EmbedBuilder()
+                                                .setTitle(question + " - " + marks + " mark(s)")
+                                                .setDescription(answersList)
+                                                .setFooter("You have " + 1.8f*marks + " minutes to answer!\nSource: "+paper+" | "+ questionID+" | "+outcomes+" | "+band)
+                                                .setColor(getDiffColor(difficulty)))
+                                        .send(event.getChannel());
+                           /* ArrayList<String> finalStrList = strList;
                             triviaBlackList.putIfAbsent(answer,new ArrayList<>());
                             boolean finalLog = log;
                             api.addMessageCreateListener(event2 -> {
@@ -239,38 +244,28 @@ public class Main {
                                         try{
                                             if(strMap.get((Integer.parseInt(event2.getMessageContent()))-1).trim()==answer.trim()) pass = true;
                                         }catch(Exception e){}
-                                        if (pass && trivias.get(answer)) {
-                                            trivias.replace(answer, false);
+                                        if (pass && questions.get(answer)) {
+                                            questions.replace(answer, false);
                                             //System.out.println(difficulty);
-                                            int rewardMultiplier = 0;
-                                            if (difficulty.equalsIgnoreCase("easy")) {
-                                                rewardMultiplier = 2;
-                                            }
-                                            if (difficulty.equalsIgnoreCase("medium")) {
-                                                rewardMultiplier = 8;
-                                            }
-                                            if (difficulty.equalsIgnoreCase("hard")) {
-                                                rewardMultiplier = 32;
-                                            }
-                                            int random = (int) ( (Math.random()) * (float)rewardMultiplier + 1f);
+                                            int rewardMultiplier = 1;
                                             if(event2.isServerMessage()) {
                                                 Long l = null;
                                                 if(finalLog) {
                                                     l = System.currentTimeMillis();
-                                                    System.out.println("Awarding Oreos");
+                                                    System.out.println("Awarding Marks");
                                                 }
-                                                awardOreos(api,event2.getServer().get().getIdAsString(), event2.getMessageAuthor().getIdAsString(), random);
+                                                //awardMarks(api,event2.getServer().get().getIdAsString(), event2.getMessageAuthor().getIdAsString(), marks);
                                                 if(finalLog) {
-                                                    System.out.println("Completed awarding Oreos, took "+(System.currentTimeMillis()-l)+"ms");
+                                                    System.out.println("Completed awarding Marks, took "+(System.currentTimeMillis()-l)+"ms");
                                                     System.out.println(ServersData);
                                                 }
                                             }
                                             new MessageBuilder()
                                                     .append(event2.getMessageAuthor().getDisplayName(), MessageDecoration.BOLD)
-                                                    .append(" is correct and has been awarded "+random+" Oreos! Great Job!")
+                                                    //.append(" is correct and has been awarded "+marks+" marks! Great Job!")
                                                     .send(event2.getChannel());
                                         } else {
-                                            if(trivias.get(answer)) {
+                                            if(questions.get(answer)) {
                                                 triviaBlackList.get(answer).add(event2.getMessageAuthor().getIdAsString());
                                                 new MessageBuilder()
                                                         .append("Incorrect! Better luck next time!")
@@ -297,16 +292,14 @@ public class Main {
                                     .addRemoveHandler(new Runnable() {
                                         @Override
                                         public void run() {
-                                            if(trivias.get(answer)) {
+                                            if(questions.get(answer)) {
                                                 event.getChannel().sendMessage("Time's up! The answer was: " + answer);
                                             }
                                             triviaBlackList.remove(answer);
-                                            trivias.remove(answer);
+                                            questions.remove(answer);
                                         }
-                                    });
+                                    });*/
 
-                        } catch (MalformedURLException e) {
-                            e.printStackTrace();
                         } catch (IOException e) {
                             e.printStackTrace();
 
@@ -315,36 +308,7 @@ public class Main {
                     }
 
 
-                    if(event.getMessageContent().toLowerCase().startsWith("jpay")&&event.isServerMessage()){
-                        int amount = getAmtFromComplexString(event.getMessageContent());
-                        int userBal = getOreos(event.getServer().get().getIdAsString(),event.getMessageAuthor().getIdAsString());
-                        boolean ranOut = false;
-                        ArrayList<String> users = new ArrayList<>();
-                        for (User u: event.getMessage().getMentionedUsers()) {
-                            if(event.getServer().get().getMembers().contains(u)){
-                                if(userBal>=amount) {
-                                    awardOreos(api, event.getServer().get().getIdAsString(), u.getIdAsString(), amount);
-                                    awardOreos(api, event.getServer().get().getIdAsString(), event.getMessageAuthor().getIdAsString(), -amount);
-                                    users.add(String.valueOf(u.getDisplayName(event.getServer().get())));
-                                }else{
-                                    ranOut = true;
-                                }
-                            }
-                        }
-                        if(ranOut){
-                            if(users.size()>0) {
-                                event.getChannel().sendMessage("ran out of oreos to give, but still gave " + amount + " oreos to " + users + "!");
-                            }else{
-                                event.getChannel().sendMessage("You can't afford to give any oreos away :(");
-                            }
-                        }else {
-                            event.getChannel().sendMessage("given " + amount + " oreos to " + users);
-                        }
-                        return;
-                    }
-
-
-                if(event.getMessageContent().equalsIgnoreCase("jtop")&&event.isServerMessage()){
+                if((event.getMessageContent().equalsIgnoreCase("c.top")||event.getMessageContent().equalsIgnoreCase("chemtop"))&&event.isServerMessage()){
                     if(!ServersData.containsKey(event.getServer().get().getIdAsString())){
                         if(testForObject(event.getServer().get().getIdAsString())) {
                             ServersData.put(event.getServer().get().getIdAsString(), (HashMap<String, HashMap<String, String>>) getObjectFromAPI(bucketName, event.getServer().get().getIdAsString()));
@@ -354,7 +318,7 @@ public class Main {
                     }
                     String firstPlayer = "";
                     String secondPlayer = "";
-                    String thirdPlayer = "Your mum";
+                    String thirdPlayer = "";
                     int firstValue = 0;
                     int secondValue = 0;
                     int thirdValue = 0;
@@ -368,24 +332,24 @@ public class Main {
                         //System.out.println(event.getServer().get().getMemberCount());
                         if(TempUserData.containsKey(user)) {
                            // System.out.println(u.getDisplayName(event.getServer().get()));
-                                int oreos = Integer.parseInt(ServersData.get(event.getServer().get().getIdAsString()).get(u.getIdAsString()).get("oreos"));
-                                if (oreos > firstValue) {
+                                int marks = Integer.parseInt(ServersData.get(event.getServer().get().getIdAsString()).get(u.getIdAsString()).get("marks"));
+                                if (marks > firstValue) {
                                     thirdPlayer = secondPlayer;
                                     thirdValue = secondValue;
                                     secondPlayer = firstPlayer;
                                     secondValue = firstValue;
                                     firstPlayer = u.getDisplayName(event.getServer().get());
-                                    firstValue = oreos;
+                                    firstValue = marks;
                                 }else{
-                                    if(oreos>secondValue){
+                                    if(marks>secondValue){
                                         thirdPlayer = secondPlayer;
                                         thirdValue = secondValue;
                                         secondPlayer = u.getDisplayName(event.getServer().get());
-                                        secondValue = oreos;
+                                        secondValue = marks;
                                     }else{
-                                        if(oreos>thirdValue){
+                                        if(marks>thirdValue){
                                             thirdPlayer = u.getDisplayName(event.getServer().get());
-                                            thirdValue = oreos;
+                                            thirdValue = marks;
                                         }
                                     }
                                 }
@@ -394,28 +358,28 @@ public class Main {
                     new MessageBuilder()
                             .setEmbed(new EmbedBuilder()
                             .setTitle(event.getServer().get().getName() + " Leaderboard:")
-                            .addField("1. " + firstPlayer, firstValue+" Oreos")
-                            .addField("2. " + secondPlayer, secondValue+" Oreos")
-                            .addField("3. " + thirdPlayer, thirdValue+" Oreos")
+                            .addField("1. " + firstPlayer, firstValue+" marks")
+                            .addField("2. " + secondPlayer, secondValue+" marks")
+                            .addField("3. " + thirdPlayer, thirdValue+" marks")
                             ).send(event.getChannel());
                     return;
                 }
 
-                if(event.getMessageContent().equalsIgnoreCase("joreos")&&event.isServerMessage()){
-                    awardOreos(api, event.getServer().get().getIdAsString(),event.getMessageAuthor().getIdAsString(),0);
-                    event.getChannel().sendMessage(":cookie: You currently have **"+ServersData.get(event.getServer().get().getIdAsString()).get(event.getMessageAuthor().getIdAsString()).get("oreos")+"** Oreos!");
+                if((event.getMessageContent().equalsIgnoreCase("c.marks")||event.getMessageContent().equalsIgnoreCase("chemmarks"))&&event.isServerMessage()){
+                    awardMarks(api, event.getServer().get().getIdAsString(),event.getMessageAuthor().getIdAsString(),0);
+                    event.getChannel().sendMessage(":white_check_mark: You currently have **"+ServersData.get(event.getServer().get().getIdAsString()).get(event.getMessageAuthor().getIdAsString()).get("marks")+"** Correct marks!");
                     return;
                 }
 
-                if(event.getMessageContent().equalsIgnoreCase("jhelp")){
+                if(event.getMessageContent().equalsIgnoreCase("chelp")||event.getMessageContent().equalsIgnoreCase("chemhelp")){
                     new MessageBuilder()
                             .setEmbed(new EmbedBuilder()
-                                    .setTitle("Help Menu - JuniorBot V0.0.4")
-                                    .setDescription("``jHelp`` opens this helpful little menu!" +
-                                            "\n\n``jOreos`` see how many :cookie: you have" +
-                                            "\n\n``jPay`` share the happiness!" +
-                                            "\n\n``jTop`` see who's at the top of the leaderboards" +
-                                            "\n\n``jTrivia`` test your trivia knowledge")
+                                    .setTitle("Help Menu - ChemBot V0.0.2b")
+                                    .setDescription("``C.Help / ChemHelp`` opens this helpful little menu!" +
+                                            "\n\n``C.Marks / ChemMarks`` see how many :white_check_mark: marks you have" +
+                                            "\n\n``C.Test / ChemTest`` generate a 10-question test to complete (Not added, yet...)" +
+                                            "\n\n``C.Top / ChemTop`` see who's at the top of the leaderboards" +
+                                            "\n\n``C.Trivia / ChemTrivia`` test your Chemistry knowledge with a random question")
                                     .setColor(Color.darkGray))
                             .send(event.getChannel());
                     return;
@@ -466,32 +430,32 @@ public class Main {
                                 }
                             }
                         }
-                        if(content.toLowerCase().startsWith("take")&&(content.toLowerCase().contains("oreos")||content.toLowerCase().contains("oreo"))){
+                        if(content.toLowerCase().startsWith("take")&&(content.toLowerCase().contains("marks")||content.toLowerCase().contains("mark"))){
                             int amount = getAmtFromComplexString(content);
                             for (User u: event.getMessage().getMentionedUsers()) {
                                 if(event.getServer().get().getMembers().contains(u)){
-                                    awardOreos(api,event.getServer().get().getIdAsString(),u.getIdAsString(),-amount);
+                                    awardMarks(api,event.getServer().get().getIdAsString(),u.getIdAsString(),-amount);
                                 }
                             }
                             ArrayList<String> users = new ArrayList<>();
                             for (User u: event.getMessage().getMentionedUsers()) {
                                 users.add(String.valueOf(u.getDisplayName(event.getServer().get())));
                             }
-                            event.getChannel().sendMessage("taken "+ amount + " oreos away from " + users);
+                            event.getChannel().sendMessage("taken "+ amount + " answer(s) away from " + users);
                         }
 
-                        if(content.toLowerCase().startsWith("give")&&(content.toLowerCase().contains("oreos")||content.toLowerCase().contains("oreo"))){
+                        if(content.toLowerCase().startsWith("give")&&(content.toLowerCase().contains("marks")||content.toLowerCase().contains("mark"))){
                             int amount = getAmtFromComplexString(content);
                             for (User u: event.getMessage().getMentionedUsers()) {
                                 if(event.getServer().get().getMembers().contains(u)){
-                                    awardOreos(api,event.getServer().get().getIdAsString(),u.getIdAsString(),amount);
+                                    awardMarks(api,event.getServer().get().getIdAsString(),u.getIdAsString(),amount);
                                 }
                             }
                             ArrayList<String> users = new ArrayList<>();
                             for (User u: event.getMessage().getMentionedUsers()) {
                                 users.add(String.valueOf(u.getDisplayName(event.getServer().get())));
                             }
-                            event.getChannel().sendMessage("given "+ amount + " oreos to " + users);
+                            event.getChannel().sendMessage("given "+ amount + " marks to " + users);
                         }
                     }
                 }
@@ -500,11 +464,11 @@ public class Main {
             backupState.scheduleAtFixedRate(backup,backupMinutes*60L*1000L,backupMinutes*60L*1000L);
     }
 
-    public static int getOreos(String Server, String User){
+    public static int getMarks(String Server, String User){
         if(ServersData.containsKey(Server)){
             if(ServersData.get(Server).containsKey(User)){
-                if(ServersData.get(Server).get(User).containsKey("oreos")){
-                    return Integer.parseInt(ServersData.get(Server).get(User).get("oreos"));
+                if(ServersData.get(Server).get(User).containsKey("marks")){
+                    return Integer.parseInt(ServersData.get(Server).get(User).get("marks"));
                 }
             }
         }
@@ -555,7 +519,7 @@ public class Main {
         }
     }
 
-    public static void awardOreos(DiscordApi api, String serverID, String UserID, int amount){
+    public static void awardMarks(DiscordApi api, String serverID, String UserID, int amount){
         try {
             if(api.getUserById(UserID).get().isBot() && UserID != api.getYourself().getIdAsString()) return;
         } catch (InterruptedException e) {
@@ -567,14 +531,14 @@ public class Main {
         if(ServersData.containsKey(serverID)){
             //System.out.println("server is present in servermap, checking if user is present in usermap");
             if(ServersData.get(serverID).containsKey(UserID)){
-                //System.out.println("user is present in usermap, updating oreos");
-                int temp = Integer.parseInt(ServersData.get(serverID).get(UserID).get("oreos"));
+                //System.out.println("user is present in usermap, updating marks");
+                int temp = Integer.parseInt(ServersData.get(serverID).get(UserID).get("marks"));
                 temp+=amount;
-                ServersData.get(serverID).get(UserID).replace("oreos",String.valueOf(temp));
+                ServersData.get(serverID).get(UserID).replace("marks",String.valueOf(temp));
             }else{
-                //System.out.println("user not present in usermap, attempting to add new user and assign oreos");
+                //System.out.println("user not present in usermap, attempting to add new user and assign marks");
                 HashMap<String,String> temp = new HashMap<>();
-                temp.put("oreos",String.valueOf(amount));
+                temp.put("marks",String.valueOf(amount));
                 createUserProfile(UserID,serverID,temp);
             }
         }else{
@@ -582,13 +546,13 @@ public class Main {
             if(testForObject(serverID)){
                 //System.out.println("located server in API, adding to servermap and incrementing oreos");
                 ServersData.put(serverID, (HashMap<String, HashMap<String, String>>) getObjectFromAPI(bucketName, serverID));
-                int temp = Integer.parseInt(ServersData.get(serverID).get(UserID).get("oreos"));
+                int temp = Integer.parseInt(ServersData.get(serverID).get(UserID).get("marks"));
                 temp+=amount;
-                ServersData.get(serverID).get(UserID).replace("oreos",String.valueOf(temp));
+                ServersData.get(serverID).get(UserID).replace("marks",String.valueOf(temp));
             }else{
                 //System.out.println("server not present in API, creating new API entry");
                 HashMap<String, String> tempMap = new HashMap<>();
-                tempMap.putIfAbsent("oreos", String.valueOf(amount));
+                tempMap.putIfAbsent("marks", String.valueOf(amount));
                 createChannelProfile(api, UserID, serverID, tempMap);
             }
         }
@@ -600,7 +564,7 @@ public class Main {
 
     public static void createUserProfile(String UserID, String serverID, HashMap<String, String> userData){
         HashMap<String,String> tempMap = userData;
-        tempMap.putIfAbsent("oreos","0");
+        tempMap.putIfAbsent("marks","0");
         ServersData.get(serverID).put(UserID, tempMap);
         forceBackup(serverID);
     }
@@ -610,7 +574,7 @@ public class Main {
         TempKeyData = new HashMap<>();
         TempUserData = new HashMap<>();
         HashMap<String,String> tempMap = userData;
-        tempMap.putIfAbsent("oreos","0");
+        tempMap.putIfAbsent("marks","0");
         TempUserData.put(UserID, tempMap);
         ServersData.put(serverID, TempUserData);
         //System.out.println("populating servermap server with generated users");

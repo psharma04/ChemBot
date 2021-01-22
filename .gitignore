@@ -2,3 +2,5 @@
 /build/
 /.gradle/
 src/test/
+/data/KEYS/
+/data/invite_url.txt
