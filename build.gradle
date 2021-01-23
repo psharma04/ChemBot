@@ -20,7 +20,7 @@ jar {
 }
 
 group 'org.example'
-version '0.0.2b'
+version '0.0.4'
 
 sourceCompatibility = 1.8
 

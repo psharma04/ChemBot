@@ -18,6 +18,8 @@ import java.io.*;
 import java.net.*;
 import org.json.*;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.List;
@@ -38,6 +40,9 @@ import com.ibm.cloud.objectstorage.oauth.BasicIBMOAuthCredentials;
 
 import static me.inertia.chembot.APIMethods.*;
 
+//todo
+// add support for extended response questions with keyword analysis
+
 //important
 //may be necessary to have .contains checks for commands done as " keyword " instead of "keyword" to prevent triggering on words containing keyword
 
@@ -45,7 +50,9 @@ import static me.inertia.chembot.APIMethods.*;
 //for now, text file content is having the objects written to them directly, however this is inefficient and should be changed later on,
 // conserving data by copying the object data to text files while in memory
 
+//150% zoom when taking screenshots for question data
 public class Main {
+    static int questionsAmt = 1;
     public static int backupMinutes = 15;
     public static boolean beta = false;
     public static boolean debug = false;
@@ -71,7 +78,6 @@ public class Main {
     private static String COS_AUTH_ENDPOINT = "https://iam.cloud.ibm.com/identity/token";
     private static String COS_SERVICE_CRN = "crn:v1:bluemix:public:cloud-object-storage:global:a/2654c4e500c94a13b20d67dc294e8b7d:d748a6b1-d96d-491f-8bae-df5874643615"; // "crn:v1:bluemix:public:cloud-object-storage:global:a/<CREDENTIAL_ID_AS_GENERATED>:<SERVICE_ID_AS_GENERATED>::"
     private static String COS_BUCKET_LOCATION = "au-syd"; // eg "us"
-    static int questionsAmt = 1;
 
                         //server          user           dataKey  value
     public static HashMap<String, HashMap<String, HashMap<String,String>>> ServersData = new HashMap<>();
@@ -167,9 +173,14 @@ public class Main {
 
 
 
-                    if (event.getMessageContent().equalsIgnoreCase("c.trivia")||event.getMessageContent().equalsIgnoreCase("chemtrivia")) {
+                    if (event.getMessageContent().toLowerCase().startsWith("c.trivia")||event.getMessageContent().toLowerCase().startsWith("chemtrivia")) {
                         try {
                             String user = event.getMessageAuthor().getIdAsString();
+                            long questionsAmt = Files.find(
+                                    Paths.get("data/questions"),
+                                    1,  // how deep do we want to descend
+                                    (path, attributes) -> attributes.isDirectory()
+                            ).count() - 1; // '-1' because '/tmp' is also counted in
                             String randomQ = String.valueOf((int)(Math.floor(Math.abs(Math.random()-0.01f)*questionsAmt)));
                             if(questions.containsKey(user)){
                                 if(questions.get(user).containsKey(randomQ)){
@@ -183,18 +194,35 @@ public class Main {
                                     }
                                 }
                             }
+                            if(!event.getMessageContent().equalsIgnoreCase("c.trivia")&&!event.getMessageContent().equalsIgnoreCase("chemtrivia")) randomQ = String.valueOf(getAmtFromComplexString(event.getMessageContent())-1);
+                            if(Integer.parseInt(randomQ)<0||Integer.parseInt(randomQ)>questionsAmt-1){
+                                event.getChannel().sendMessage("Error selecting question: selected question ID does not exist! Picking a random question...");
+                                randomQ = String.valueOf((int)(Math.floor(Math.abs(Math.random()-0.01f)*questionsAmt)));
+                            }
                             BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(("data/questions/"+randomQ+"/questionData.json"))));
                             JSONObject obj = new JSONObject(br.readLine());
                             String type = obj.getString("type");
                             String question = obj.getString("question");
                             boolean multi = false;
                             String answer = obj.getString("correct");
+                            boolean showImage = false;
                             if(obj.getString("image").equalsIgnoreCase("y")){
                                 //do some thing
+                                showImage = true;
                             }
                             ArrayList<String> answers = new ArrayList<>();
                             if(type.equalsIgnoreCase("Multiple Choice")) {
                                 multi = true;
+                                JSONArray arr = obj.getJSONArray("answers");
+                                answers.add(arr.getJSONObject(0).getString("A"));
+                                answers.add(arr.getJSONObject(0).getString("B"));
+                                answers.add(arr.getJSONObject(0).getString("C"));
+                                answers.add(arr.getJSONObject(0).getString("D"));
+                            }
+                            boolean bmulti = false;
+                            if (type.equalsIgnoreCase("BMultiple Choice")) {
+                                multi = true;
+                                bmulti = true;
                                 JSONArray arr = obj.getJSONArray("answers");
                                 answers.add(arr.getJSONObject(0).getString("A"));
                                 answers.add(arr.getJSONObject(0).getString("B"));
@@ -214,7 +242,7 @@ public class Main {
                                     difficulty = "hard";
                                 }
                             }
-                            //important unhandled exceptions may cause issues later on
+                            //important! Unhandled exceptions may cause issues later on
                             try{
                                 questionID = extra.getString("questionID");
                             }catch(Exception e){}
@@ -228,16 +256,26 @@ public class Main {
                                 band = extra.getString("band");
                             }catch(Exception e){}
                             String answersList = "";
-                            if(multi) answersList = "A: "+answers.get(0)+"\nB: "+answers.get(1)+"\nC: "+answers.get(2)+"\nD: "+answers.get(3)+"\n";
-
+                            if(multi&&!bmulti) answersList = "A: "+answers.get(0)+"\nB: "+answers.get(1)+"\nC: "+answers.get(2)+"\nD: "+answers.get(3)+"\n";
                             System.out.println(answersList);
+                            if(!showImage) {
                                 new MessageBuilder()
                                         .setEmbed(new EmbedBuilder()
                                                 .setTitle(question + " - " + marks + " mark(s)")
                                                 .setDescription(answersList)
-                                                .setFooter("You have " + 1.8f*marks + " minutes to answer!\nSource: "+paper+" | "+ questionID+" | "+outcomes+" | "+band)
+                                                .setFooter("You have " + 1.8f * marks + " minutes to answer!\nSource: " + paper + " | " + questionID + " | " + outcomes + " | " + band)
                                                 .setColor(getDiffColor(difficulty)))
                                         .send(event.getChannel());
+                            }else{
+                                new MessageBuilder()
+                                        .setEmbed(new EmbedBuilder()
+                                                .setTitle(question + " - " + marks + " mark(s)")
+                                                .setImage(new File("data/questions/"+randomQ+"/image.png"))
+                                                .setDescription(answersList)
+                                                .setFooter("You have " + 1.8f * marks + " minutes to answer!\nSource: " + paper + " | " + questionID + " | " + outcomes + " | " + band)
+                                                .setColor(getDiffColor(difficulty)))
+                                        .send(event.getChannel());
+                            }
                             String finalRandomQ = randomQ;
                             if(questions.containsKey(user)){
                                 if(questions.get(user).containsKey(finalRandomQ)){
@@ -251,20 +289,22 @@ public class Main {
                             }
                             boolean finalMulti = multi;
                             api.addMessageCreateListener(event2 -> {
-                                System.out.println("Detected message event!");
-                                System.out.println(event.getMessageAuthor().getIdAsString()+"\n"+event2.getMessageAuthor().getIdAsString());
+                                //System.out.println("Detected message event!");
+                                //System.out.println(event.getMessageAuthor().getIdAsString()+"\n"+event2.getMessageAuthor().getIdAsString());
                                 if(event2.getMessageAuthor().getIdAsString().trim().equals(event.getMessageAuthor().getIdAsString().trim()) &&!questions.get(user).get(finalRandomQ)){
-                                    System.out.println("passed check 1");
+                                    //System.out.println("passed check 1");
                                     if(finalMulti) {
-                                        System.out.println("passed check 2");
+                                        //System.out.println("passed check 2");
                                         if (event2.getMessageContent().trim().equalsIgnoreCase(answer)) {
-                                            System.out.println("passed check 3");
+                                          //  System.out.println("passed check 3");
                                             questions.get(user).replace(finalRandomQ,true);
                                             event2.getChannel().sendMessage(":white_check_mark: Correct! Excellent job! (+" + marks + " marks)");
+                                            awardMarks(api,event2.getServer().get().getIdAsString(), event2.getMessageAuthor().getIdAsString(), marks);
                                         }else{
                                             String s = "abcd";
                                             if(s.contains(event2.getMessageContent().toLowerCase().trim())){
-                                                event2.getChannel().sendMessage(":x: Incorrect. Better next time!");
+                                                questions.get(user).replace(finalRandomQ,true);
+                                                event2.getChannel().sendMessage(":x: Incorrect, the answer was "+answer+". Better next time!");
                                             }
                                         }
                                     }else{
@@ -288,81 +328,6 @@ public class Main {
                                             questions.remove(finalRandomQ);
                                         }
                                     });
-
-                           /* ArrayList<String> finalStrList = strList;
-                            triviaBlackList.putIfAbsent(answer,new ArrayList<>());
-                            boolean finalLog = log;
-                            api.addMessageCreateListener(event2 -> {
-                                int tempi = 0;
-                                for (String string : finalStrList) {
-                                    boolean pass = false;
-                                    if((event2.getMessageContent().trim().equalsIgnoreCase(string.trim()))) pass = true;
-                                    try {
-                                        if (strMap.containsKey(Integer.parseInt(event2.getMessageContent().trim())-1))
-                                            pass = true;
-                                    }catch(Exception e){System.out.print("");}
-                                    if (pass&&!triviaBlackList.get(answer).contains(event2.getMessageAuthor().getIdAsString())) {
-                                        pass = false;
-                                        if(event2.getMessageContent().trim().equalsIgnoreCase(answer.trim())) pass = true;
-                                        try{
-                                            if(strMap.get((Integer.parseInt(event2.getMessageContent()))-1).trim()==answer.trim()) pass = true;
-                                        }catch(Exception e){}
-                                        if (pass && questions.get(answer)) {
-                                            questions.replace(answer, false);
-                                            //System.out.println(difficulty);
-                                            int rewardMultiplier = 1;
-                                            if(event2.isServerMessage()) {
-                                                Long l = null;
-                                                if(finalLog) {
-                                                    l = System.currentTimeMillis();
-                                                    System.out.println("Awarding Marks");
-                                                }
-                                                //awardMarks(api,event2.getServer().get().getIdAsString(), event2.getMessageAuthor().getIdAsString(), marks);
-                                                if(finalLog) {
-                                                    System.out.println("Completed awarding Marks, took "+(System.currentTimeMillis()-l)+"ms");
-                                                    System.out.println(ServersData);
-                                                }
-                                            }
-                                            new MessageBuilder()
-                                                    .append(event2.getMessageAuthor().getDisplayName(), MessageDecoration.BOLD)
-                                                    //.append(" is correct and has been awarded "+marks+" marks! Great Job!")
-                                                    .send(event2.getChannel());
-                                        } else {
-                                            if(questions.get(answer)) {
-                                                triviaBlackList.get(answer).add(event2.getMessageAuthor().getIdAsString());
-                                                new MessageBuilder()
-                                                        .append("Incorrect! Better luck next time!")
-                                                        .send(event2.getChannel());
-                                            }
-                                        }
-                                    }else {
-                                        boolean pass2 = false;
-                                        try{
-                                            if (strMap.get((Integer.parseInt(event2.getMessageContent())) - 1).trim() == answer.trim()) {
-                                                pass2 = true;
-                                            }
-                                        }catch(Exception e){
-                                            System.out.print("");
-                                        }
-                                        if((event2.getMessageContent().trim().equalsIgnoreCase(string.trim()))) {
-                                            new MessageBuilder()
-                                                    .append("You've already guessed! Try again next time!")
-                                                    .send(event2.getChannel());
-                                        }
-                                    }
-                                }
-                            }).removeAfter(1, TimeUnit.MINUTES)
-                                    .addRemoveHandler(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            if(questions.get(answer)) {
-                                                event.getChannel().sendMessage("Time's up! The answer was: " + answer);
-                                            }
-                                            triviaBlackList.remove(answer);
-                                            questions.remove(answer);
-                                        }
-                                    });*/
-
                         } catch (IOException e) {
                             e.printStackTrace();
 
@@ -428,21 +393,25 @@ public class Main {
                     return;
                 }
 
-                if((event.getMessageContent().equalsIgnoreCase("c.marks")||event.getMessageContent().equalsIgnoreCase("chemmarks"))&&event.isServerMessage()){
-                    awardMarks(api, event.getServer().get().getIdAsString(),event.getMessageAuthor().getIdAsString(),0);
-                    event.getChannel().sendMessage(":white_check_mark: You currently have **"+ServersData.get(event.getServer().get().getIdAsString()).get(event.getMessageAuthor().getIdAsString()).get("marks")+"** Correct marks!");
-                    return;
+                if((event.getMessageContent().equalsIgnoreCase("c.marks")||event.getMessageContent().equalsIgnoreCase("chemmarks"))){
+                    if(event.isServerMessage()) {
+                        awardMarks(api, event.getServer().get().getIdAsString(), event.getMessageAuthor().getIdAsString(), 0);
+                        event.getChannel().sendMessage(":bookmark_tabs: You currently have **" + ServersData.get(event.getServer().get().getIdAsString()).get(event.getMessageAuthor().getIdAsString()).get("marks") + "** marks!");
+                        return;
+                    }else{
+                        event.getChannel().sendMessage("Sorry! The marks feature is currently only supported in servers, and not private DMs.");
+                    }
                 }
 
                 if(event.getMessageContent().equalsIgnoreCase("c.help")||event.getMessageContent().equalsIgnoreCase("chemhelp")){
                     new MessageBuilder()
                             .setEmbed(new EmbedBuilder()
-                                    .setTitle("Help Menu - ChemBot V0.0.3")
-                                    .setDescription("``C.Help / ChemHelp`` opens this helpful little menu!" +
-                                            "\n\n``C.Marks / ChemMarks`` :newspaper: see how many marks you have" +
-                                            "\n\n``C.Test / ChemTest`` generate a 10-question test to complete (Not added, yet...)" +
-                                            "\n\n``C.Top / ChemTop`` see who's at the top of the leaderboards" +
-                                            "\n\n``C.Trivia / ChemTrivia`` test your Chemistry knowledge with a random question"+
+                                    .setTitle("Help Menu - ChemBot V0.0.4")
+                                    .setDescription(":grey_question: ``C.Help / ChemHelp`` opens this helpful little menu!" +
+                                            "\n\n:newspaper: ``C.Marks / ChemMarks`` see how many marks you have" +
+                                            "\n\n:page_facing_up: ``C.Test / ChemTest`` generate a 10-question test to complete (Not added, yet...)" +
+                                            "\n\n:stopwatch: ``C.Top / ChemTop`` see who's at the top of the leaderboards" +
+                                            "\n\n:test_tube: ``C.Trivia / ChemTrivia`` test your Chemistry knowledge with a random question"+
                                             "\n\n*The ChemistryBot Project and its code is open source and available online [here](https://github.com/iGamingMango/ChemBot)*")
                                     .setColor(Color.darkGray))
                             .send(event.getChannel());
