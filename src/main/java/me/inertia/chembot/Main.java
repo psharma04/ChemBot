@@ -125,7 +125,8 @@ public class Main {
 
         //endregion
 
-            HashMap<String, Boolean> questions = new HashMap<>();
+        ///////////user id  question ID     answered?
+            HashMap<String, HashMap<String, Boolean>> questions = new HashMap<>();
             HashMap<String, ArrayList<String>> triviaBlackList = new HashMap<>();
             // Log the bot in
         DiscordApi api;
@@ -158,8 +159,6 @@ public class Main {
                     return;
                 }
                  */
-
-
                 if(event.getMessageAuthor().isUser()){
                     boolean log = false;
                     if(logOnChannel.contains(event.getChannel().getIdAsString())){
@@ -170,12 +169,26 @@ public class Main {
 
                     if (event.getMessageContent().equalsIgnoreCase("c.trivia")||event.getMessageContent().equalsIgnoreCase("chemtrivia")) {
                         try {
+                            String user = event.getMessageAuthor().getIdAsString();
                             String randomQ = String.valueOf((int)(Math.floor(Math.abs(Math.random()-0.01f)*questionsAmt)));
+                            if(questions.containsKey(user)){
+                                if(questions.get(user).containsKey(randomQ)){
+                                    int count = 0;
+                                    while(questions.get(user).containsKey(randomQ)){
+                                        count++;
+                                        randomQ = String.valueOf((int)(Math.floor(Math.abs(Math.random()-0.01f)*questionsAmt)));
+                                        if (count>100) {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
                             BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(("data/questions/"+randomQ+"/questionData.json"))));
                             JSONObject obj = new JSONObject(br.readLine());
                             String type = obj.getString("type");
                             String question = obj.getString("question");
                             boolean multi = false;
+                            String answer = obj.getString("correct");
                             if(obj.getString("image").equalsIgnoreCase("y")){
                                 //do some thing
                             }
@@ -188,7 +201,6 @@ public class Main {
                                 answers.add(arr.getJSONObject(0).getString("C"));
                                 answers.add(arr.getJSONObject(0).getString("D"));
                             }
-                            String correct = obj.getString("correct");
                             int marks = obj.getInt("marks");
                             JSONObject extra = obj.getJSONObject("data");
                             String questionID = "Question N/A";
@@ -226,6 +238,57 @@ public class Main {
                                                 .setFooter("You have " + 1.8f*marks + " minutes to answer!\nSource: "+paper+" | "+ questionID+" | "+outcomes+" | "+band)
                                                 .setColor(getDiffColor(difficulty)))
                                         .send(event.getChannel());
+                            String finalRandomQ = randomQ;
+                            if(questions.containsKey(user)){
+                                if(questions.get(user).containsKey(finalRandomQ)){
+                                    questions.get(user).replace(finalRandomQ,false);
+                                }else{
+                                    questions.get(user).put(finalRandomQ,false);
+                                }
+                            }else{
+                                questions.put(user, new HashMap<String, Boolean>());
+                                questions.get(user).put(finalRandomQ,false);
+                            }
+                            boolean finalMulti = multi;
+                            api.addMessageCreateListener(event2 -> {
+                                System.out.println("Detected message event!");
+                                System.out.println(event.getMessageAuthor().getIdAsString()+"\n"+event2.getMessageAuthor().getIdAsString());
+                                if(event2.getMessageAuthor().getIdAsString().trim().equals(event.getMessageAuthor().getIdAsString().trim()) &&!questions.get(user).get(finalRandomQ)){
+                                    System.out.println("passed check 1");
+                                    if(finalMulti) {
+                                        System.out.println("passed check 2");
+                                        if (event2.getMessageContent().trim().equalsIgnoreCase(answer)) {
+                                            System.out.println("passed check 3");
+                                            questions.get(user).replace(finalRandomQ,true);
+                                            event2.getChannel().sendMessage(":white_check_mark: Correct! Excellent job! (+" + marks + " marks)");
+                                        }else{
+                                            String s = "abcd";
+                                            if(s.contains(event2.getMessageContent().toLowerCase().trim())){
+                                                event2.getChannel().sendMessage(":x: Incorrect. Better next time!");
+                                            }
+                                        }
+                                    }else{
+                                        //do extended/short response keyword check method here
+                                    }
+                                }
+                            }).removeAfter((long) (marks*60f*1.8f), TimeUnit.SECONDS)
+                                    .addRemoveHandler(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            System.out.println("Question timed out!");
+                                            if(!questions.get(user).get(finalRandomQ)) {
+                                                try {
+                                                    event.getChannel().sendMessage("Time's up, "+api.getUserById(user).get().getMentionTag()+"! The answer was: " + answer);
+                                                } catch (InterruptedException e) {
+                                                    e.printStackTrace();
+                                                } catch (ExecutionException e) {
+                                                    e.printStackTrace();
+                                                }
+                                            }
+                                            questions.remove(finalRandomQ);
+                                        }
+                                    });
+
                            /* ArrayList<String> finalStrList = strList;
                             triviaBlackList.putIfAbsent(answer,new ArrayList<>());
                             boolean finalLog = log;
@@ -371,15 +434,16 @@ public class Main {
                     return;
                 }
 
-                if(event.getMessageContent().equalsIgnoreCase("chelp")||event.getMessageContent().equalsIgnoreCase("chemhelp")){
+                if(event.getMessageContent().equalsIgnoreCase("c.help")||event.getMessageContent().equalsIgnoreCase("chemhelp")){
                     new MessageBuilder()
                             .setEmbed(new EmbedBuilder()
-                                    .setTitle("Help Menu - ChemBot V0.0.2b")
+                                    .setTitle("Help Menu - ChemBot V0.0.3")
                                     .setDescription("``C.Help / ChemHelp`` opens this helpful little menu!" +
-                                            "\n\n``C.Marks / ChemMarks`` see how many :white_check_mark: marks you have" +
+                                            "\n\n``C.Marks / ChemMarks`` :newspaper: see how many marks you have" +
                                             "\n\n``C.Test / ChemTest`` generate a 10-question test to complete (Not added, yet...)" +
                                             "\n\n``C.Top / ChemTop`` see who's at the top of the leaderboards" +
-                                            "\n\n``C.Trivia / ChemTrivia`` test your Chemistry knowledge with a random question")
+                                            "\n\n``C.Trivia / ChemTrivia`` test your Chemistry knowledge with a random question"+
+                                            "\n\n*The ChemistryBot Project and its code is open source and available online [here](https://github.com/iGamingMango/ChemBot)*")
                                     .setColor(Color.darkGray))
                             .send(event.getChannel());
                     return;
