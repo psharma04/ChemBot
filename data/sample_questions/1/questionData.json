@@ -1,0 +1,1 @@
+{"type": "(Multiple Choice)/(BMultiple Choice)","question": "Question_Header","image": "Y/N","answers": [{"A": "Option 1", "B": "Option 2", "C": "Option 3", "D":"Option 4"}], "correct": "Correct_Answer", "data": {"questionID": "Question X", "paper": "Paper Y", "outcomes": "ABC", "band": "Z"},"marks": 1}

@@ -3,10 +3,17 @@ plugins {
     id 'groovy'
     id 'idea'
 }
-
+task copyDir(type: Copy) {
+    from 'data'
+    into 'build/libs/data'
+}
 jar {
+       jar.finalizedBy(copyDir)
         doFirst {
-            from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+
+            from {
+                configurations.compile.collect { it.isDirectory() ? it : zipTree(it)}
+            }
         }
         exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
     manifest {
@@ -20,7 +27,7 @@ jar {
 }
 
 group 'org.example'
-version '0.0.4'
+version '0.0.5'
 
 sourceCompatibility = 1.8
 
@@ -46,3 +53,7 @@ dependencies {
     extraLibs 'org.jsoup:jsoup:1.13.1'
     extraLibs 'com.ibm.cos:ibm-cos-java-sdk:2.8.0'
 }
+
+
+
+
