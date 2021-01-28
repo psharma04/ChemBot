@@ -24,6 +24,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import com.ibm.cloud.objectstorage.ClientConfiguration;
@@ -112,8 +114,8 @@ public class Main {
     }
 
     public static String adminID = "258695315299893259";
-    public static void main(String[] args) {
 
+    public static void main(String[] args) {
         if(beta){
             bucketName = "chembucketbeta";
         }
@@ -256,23 +258,24 @@ public class Main {
                                 band = extra.getString("band");
                             }catch(Exception e){}
                             String answersList = "";
-                            if(multi&&!bmulti) answersList = "A: "+answers.get(0)+"\nB: "+answers.get(1)+"\nC: "+answers.get(2)+"\nD: "+answers.get(3)+"\n";
-                            System.out.println(answersList);
+                            if(multi&&!bmulti) answersList = "A: "+answers.get(0)+"\nB: "+answers.get(1)+"\nC: "+answers.get(2)+"\nD: "+answers.get(3)+"\n\n";
+                            System.out.println(question);
+                            String FooterMessage = "You have " + 1.8f * marks + " minutes to answer!\nSource: " + paper + " | " + questionID + " | Outcomes " + outcomes + " | Band " + band + "\nID#" + (Integer.parseInt(randomQ) + 1);
                             if(!showImage) {
                                 new MessageBuilder()
                                         .setEmbed(new EmbedBuilder()
-                                                .setTitle(question + " - " + marks + " mark(s)")
-                                                .setDescription(answersList)
-                                                .setFooter("You have " + 1.8f * marks + " minutes to answer!\nSource: " + paper + " | " + questionID + " | " + outcomes + " | " + band)
+                                                .setTitle(paper +" "+ questionID + " - " + marks + " mark(s)")
+                                                .setDescription(question+"\n\n"+answersList)
+                                                .setFooter(FooterMessage)
                                                 .setColor(getDiffColor(difficulty)))
                                         .send(event.getChannel());
                             }else{
                                 new MessageBuilder()
                                         .setEmbed(new EmbedBuilder()
-                                                .setTitle(question + " - " + marks + " mark(s)")
+                                                .setTitle(paper +" "+ questionID + " - " + marks + " mark(s)")
+                                                .setDescription(question+"\n"+answersList)
                                                 .setImage(new File("data/questions/"+randomQ+"/image.png"))
-                                                .setDescription(answersList)
-                                                .setFooter("You have " + 1.8f * marks + " minutes to answer!\nSource: " + paper + " | " + questionID + " | " + outcomes + " | " + band)
+                                                .setFooter(FooterMessage)
                                                 .setColor(getDiffColor(difficulty)))
                                         .send(event.getChannel());
                             }
@@ -299,12 +302,14 @@ public class Main {
                                           //  System.out.println("passed check 3");
                                             questions.get(user).replace(finalRandomQ,true);
                                             event2.getChannel().sendMessage(":white_check_mark: Correct! Excellent job! (+" + marks + " marks)");
-                                            awardMarks(api,event2.getServer().get().getIdAsString(), event2.getMessageAuthor().getIdAsString(), marks);
+                                            if(event.isServerMessage()) {
+                                                awardMarks(api, event2.getServer().get().getIdAsString(), event2.getMessageAuthor().getIdAsString(), marks);
+                                            }
                                         }else{
                                             String s = "abcd";
                                             if(s.contains(event2.getMessageContent().toLowerCase().trim())){
                                                 questions.get(user).replace(finalRandomQ,true);
-                                                event2.getChannel().sendMessage(":x: Incorrect, the answer was "+answer+". Better next time!");
+                                                event2.getChannel().sendMessage(":x: Incorrect, the answer was "+answer+". Better luck next time!");
                                             }
                                         }
                                     }else{
@@ -403,18 +408,79 @@ public class Main {
                     }
                 }
 
-                if(event.getMessageContent().equalsIgnoreCase("c.help")||event.getMessageContent().equalsIgnoreCase("chemhelp")){
-                    new MessageBuilder()
-                            .setEmbed(new EmbedBuilder()
-                                    .setTitle("Help Menu - ChemBot V0.0.4")
-                                    .setDescription(":grey_question: ``C.Help / ChemHelp`` opens this helpful little menu!" +
-                                            "\n\n:newspaper: ``C.Marks / ChemMarks`` see how many marks you have" +
-                                            "\n\n:page_facing_up: ``C.Test / ChemTest`` generate a 10-question test to complete (Not added, yet...)" +
-                                            "\n\n:stopwatch: ``C.Top / ChemTop`` see who's at the top of the leaderboards" +
-                                            "\n\n:test_tube: ``C.Trivia / ChemTrivia`` test your Chemistry knowledge with a random question"+
-                                            "\n\n*The ChemistryBot Project and its code is open source and available online [here](https://github.com/iGamingMango/ChemBot)*")
-                                    .setColor(Color.darkGray))
-                            .send(event.getChannel());
+                if(event.getMessageContent().toLowerCase().startsWith("c.help")||event.getMessageContent().toLowerCase().startsWith("chemhelp")){
+                    if(event.getMessageContent().equalsIgnoreCase("c.help")||event.getMessageContent().equalsIgnoreCase("chemhelp")) {
+                        new MessageBuilder()
+                                .setEmbed(new EmbedBuilder()
+                                        .setTitle("Commands List - ChemBot V0.0.5")
+                                        .setDescription("*Use C.[Command] or Chem[Command] to send a command.\nFor example, C.Help opens this menu*" +
+                                                "\n\n:grey_question: ``Help`` Try C.help help for more info!" +
+                                                "\n\n:newspaper: ``Marks`` see how many marks you have" +
+                                                "\n\n:page_facing_up: ``Test`` generate a customised test to complete (Not added, yet...)" +
+                                                "\n\n:stopwatch: ``Top`` see who's at the top of the leaderboards" +
+                                                "\n\n:test_tube: ``Trivia`` test your Chemistry knowledge with a random question" +
+                                                "\n\n*The ChemistryBot Project and its code is open source and available online [here](https://github.com/iGamingMango/ChemBot)*")
+                                        .setColor(Color.darkGray))
+                                .send(event.getChannel());
+                    }else{
+                        if(event.getMessageContent().toLowerCase().contains("marks")){
+                            new MessageBuilder()
+                                    .setEmbed(new EmbedBuilder()
+                                            .setTitle(":newspaper: ``C.Marks / ChemMarks``")
+                                            .setDescription("This command will tell you how many marks you have accumulated on a server. " +
+                                                    "Marks are awarded by completing trivia or test questions, the amount of marks you get will depend on the question." +
+                                                    " The amount of time you have to complete a question is 1.8x[the number of marks], as is the official HSC standard. " +
+                                                    "\n\nFor extended response questions, it may be a bit scary for time to type if you are using a phone, but you type faster " +
+                                                    "than you think! On average, typing on a phone is 5 words per minute faster than writing, so just relax and use that extra " +
+                                                    "time to make sure there are no typos!")
+                                            .setColor(Color.darkGray))
+                                    .send(event.getChannel());
+                            return;
+                        }
+
+                        if(event.getMessageContent().toLowerCase().substring(8).contains("help")){
+                            new MessageBuilder()
+                                    .setEmbed(new EmbedBuilder()
+                                            .setTitle(":grey_question: ``C.Help / ChemHelp``")
+                                            .setDescription("Opens a helpful little menu!\nFurther information on commands can be retrieved by sending the ChemHelp or C.Help command, followed by another command or just its suffix.\n\nFor example, 'ChemHelp ChemMarks' and 'ChemHelp marks' will both bring up the *Marks* help menu")
+                                            .setColor(Color.darkGray))
+                                    .send(event.getChannel());
+                            return;
+                        }
+                        if(event.getMessageContent().toLowerCase().contains("test")){
+                            new MessageBuilder()
+                                    .setEmbed(new EmbedBuilder()
+                                            .setTitle(":page_facing_up: ``Test`` (Work In Progress)")
+                                            .setDescription("Generates a test with a length of your choosing to complete.\n\nI want this to be really customisable and convenient, so please hang in there while I work on it. I'm hoping in the final version to have a big post-test summary that will help to identify you strengths and where more development is required!")
+                                            .setColor(Color.darkGray))
+                                    .send(event.getChannel());
+                            return;
+                        }
+                        if(event.getMessageContent().toLowerCase().contains("top")){
+                            new MessageBuilder()
+                                    .setEmbed(new EmbedBuilder()
+                                            .setTitle(":stopwatch: ``Top``")
+                                            .setDescription("Shows the top 3 people with the most marks in the server.\n\nCurrently this does not work in DMs due to it being server-based and is intended as a bit of competitive fun. A more in-depth way of tracking your performance and progress that works in DMs will be implemented with *Tests*.")
+                                            .setColor(Color.darkGray))
+                                    .send(event.getChannel());
+                            return;
+                        }
+                        if(event.getMessageContent().toLowerCase().contains("trivia")){
+                            new MessageBuilder()
+                                    .setEmbed(new EmbedBuilder()
+                                            .setTitle(":test_tube: ``Trivia``")
+                                            .setDescription("Trivia will give you a single random question from a set database to test your Chemistry knowledge on.\n\n" +
+                                                    "The additional text at the bottom has more information on the question:\n" +
+                                                    "__'Source: ABC Paper'__ shows the paper where the question came from.\n" +
+                                                    "__'Question X'__ shows the corresponding question number in the paper.\n" +
+                                                    "__'Outcomes CHXY-Z'__ shows the syllabus outcomes the question is examining.\n" +
+                                                    "__'Band X'__ shows the band-level student the question is aimed at.\n" +
+                                                    "__'ID#XYZ'__ the question ID, **typing 'C.Trivia 3' always shows the question with ID 3.**")
+                                            .setColor(Color.darkGray))
+                                    .send(event.getChannel());
+                            return;
+                        }
+                    }
                     return;
                 }
                 if(event.getMessageAuthor().getIdAsString().contentEquals(adminID)){
@@ -591,10 +657,6 @@ public class Main {
         }
     }
 
-    public static void addUserElement(){
-
-    }
-
     public static void createUserProfile(String UserID, String serverID, HashMap<String, String> userData){
         HashMap<String,String> tempMap = userData;
         tempMap.putIfAbsent("marks","0");
@@ -612,7 +674,7 @@ public class Main {
         ServersData.put(serverID, TempUserData);
         //System.out.println("populating servermap server with generated users");
         for (User u : api.getServerById(serverID).get().getMembers()) {
-            if(u.getIdAsString()!=UserID) {
+            if(!Objects.equals(u.getIdAsString().trim(), UserID.trim())) {
                 createUserProfile(u.getIdAsString(), serverID, new HashMap<>());
             }else{
                 //System.out.println("Generator User, skipping");

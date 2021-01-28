@@ -1,1 +1,0 @@
-{"type":"mchoice","question":"sample_question","image":"Y","answers":{"A":"answer_A","B":"answer_B","C":"answer_C"},"correct":"B","data":{"questionID":"Question X","paper":"Paper Y","outcomes":"CHXX/YY-ZZ","band":"2-3"},"marks":1}
