@@ -23,9 +23,9 @@ public class APIMethods {
         try {
             if(test) {
                 BufferedReader br = new BufferedReader(new FileReader(new File("data/KEYS/discordtest.api")));
-                String s = br.readLine();
-                System.out.println(s);
-                return s;
+                //String s = br.readLine();
+                //System.out.println(s);
+                return br.readLine();
             }else{
                 BufferedReader br = new BufferedReader(new FileReader(new File("data/KEYS/discord.api")));
                 return br.readLine();

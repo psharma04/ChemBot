@@ -1,86 +1,61 @@
 package me.inertia.chembot;
+
 import com.ibm.cloud.objectstorage.SDKGlobalConfiguration;
 import com.ibm.cloud.objectstorage.SdkClientException;
+import com.ibm.cloud.objectstorage.services.s3.AmazonS3;
 import org.javacord.api.DiscordApi;
 import org.javacord.api.DiscordApiBuilder;
 import org.javacord.api.entity.activity.ActivityType;
-import org.javacord.api.entity.channel.GroupChannel;
-import org.javacord.api.entity.intent.Intent;
 import org.javacord.api.entity.message.MessageBuilder;
-import org.javacord.api.entity.message.MessageDecoration;
 import org.javacord.api.entity.message.embed.EmbedBuilder;
 import org.javacord.api.entity.user.User;
-import org.javacord.api.entity.user.UserStatus;
-import org.jsoup.Jsoup;
+import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
-import java.io.*;
-import java.net.*;
-import org.json.*;
-
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.time.LocalDateTime;
 import java.util.*;
-import java.util.List;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
-import com.ibm.cloud.objectstorage.ClientConfiguration;
-import com.ibm.cloud.objectstorage.auth.AWSCredentials;
-import com.ibm.cloud.objectstorage.auth.AWSStaticCredentialsProvider;
-import com.ibm.cloud.objectstorage.client.builder.AwsClientBuilder.EndpointConfiguration;
-import com.ibm.cloud.objectstorage.services.s3.AmazonS3;
-import com.ibm.cloud.objectstorage.services.s3.AmazonS3ClientBuilder;
-import com.ibm.cloud.objectstorage.services.s3.model.Bucket;
-import com.ibm.cloud.objectstorage.services.s3.model.ListObjectsRequest;
-import com.ibm.cloud.objectstorage.services.s3.model.ObjectListing;
-import com.ibm.cloud.objectstorage.services.s3.model.S3ObjectSummary;
-import com.ibm.cloud.objectstorage.oauth.BasicIBMOAuthCredentials;
 
 import static me.inertia.chembot.APIMethods.*;
 
 //todo
 // add support for extended response questions with keyword analysis
+// add test function for customised mini-test to complete
+// add analytics to show user what modules they need to work on and where their strengths are
+// ::: A lot of extra stuff comes under this, such as but not limited to:
+// :::::: Accuracy
+// :::::: Band-estimate
+// :::::: Where the user sits (projected) based on past HSC statistics
+// :::::: Improvement (hopefully) over time statistics
+// :::::: [Maybe?] Graphs built on the fly by the program to show data, this'll be a pain to do from scratch so I may get a library in for this one
+// add small lookup-table file to associate module numbers with verbose topic titles
 
 //important
 //may be necessary to have .contains checks for commands done as " keyword " instead of "keyword" to prevent triggering on words containing keyword
 
 //important
-//for now, text file content is having the objects written to them directly, however this is inefficient and should be changed later on,
-// conserving data by copying the object data to text files while in memory
+//for now, text file content is having the objects written to them directly, however this is inefficient (in terms of file space)
+//and should be changed later on if data budget becomes an issue, however it'll be super painful to do so.
 
 //150% zoom when taking screenshots for question data
 public class Main {
-    static int questionsAmt = 1;
-    public static int backupMinutes = 15;
-    public static boolean beta = false;
-    public static boolean debug = false;
-    public static ArrayList<String> logOnChannel = new ArrayList<>();
 
-    public static Color getDiffColor(String diff){
-        if(Objects.equals(diff, "easy")){
-            return Color.blue;
-        }
-        if(Objects.equals(diff, "medium")){
-            return Color.yellow;
-        }
-        if(Objects.equals(diff, "hard")){
-            return Color.red;
-        }
-        return Color.black;
-    }
-
-    static AmazonS3 _cos;
+    //region API-Stuff
+    public static int backupMinutes = 20; //how often in minutes the IBM Cloud API server should have data backed up to it
+    static AmazonS3 _cos; //The IBM API object
     static String bucketName = "chembucket";
     private static String COS_ENDPOINT = "s3.au-syd.cloud-object-storage.appdomain.cloud"; // eg "https://s3.us.cloud-object-storage.appdomain.cloud"
     private static String COS_API_KEY_ID = getCloudAPI(); // eg "0viPHOY7LbLNa9eLftrtHPpTjoGv6hbLD1QalRXikliJ"
     private static String COS_AUTH_ENDPOINT = "https://iam.cloud.ibm.com/identity/token";
     private static String COS_SERVICE_CRN = "crn:v1:bluemix:public:cloud-object-storage:global:a/2654c4e500c94a13b20d67dc294e8b7d:d748a6b1-d96d-491f-8bae-df5874643615"; // "crn:v1:bluemix:public:cloud-object-storage:global:a/<CREDENTIAL_ID_AS_GENERATED>:<SERVICE_ID_AS_GENERATED>::"
     private static String COS_BUCKET_LOCATION = "au-syd"; // eg "us"
+    public static String adminID = "258695315299893259"; //My discord user-ID, used for authorising custom debugging commands without the risk/hassle of a password
+    public static DiscordApi api; //the API object JavaCord uses
+    //endregion
 
+    //region Memory-Datastructure
                         //server          user           dataKey  value
     public static HashMap<String, HashMap<String, HashMap<String,String>>> ServersData = new HashMap<>();
 
@@ -90,36 +65,39 @@ public class Main {
                        //datakey  value
     public static HashMap<String,String> TempKeyData = new HashMap<>();
 
+                        //user  //QuestionInstance
+    public static HashMap<String,QuestionsUserInstance> userQManager = new HashMap<>();
 
+    //to be removed, just making sure no issues are caused by the change in structure
+                      //serverID       //userID  //is answered, to become QuestionInstance
+    //public static HashMap<String, HashMap<String, Boolean>> questions = new HashMap<>();
+    //endregion
+
+    //region miscellaneous
+    public static boolean beta = true;
+    public static boolean debug = false;
+    public static ArrayList<String> logOnChannel = new ArrayList<>();
+    //endregion
 
     static Timer backupState = new Timer();
     static TimerTask backup = new TimerTask() {
         @Override
         public void run() {
-            //System.out.println("Backing up data!");
             for (String s :ServersData.keySet()) {
                 writeObjectToAPI(ServersData.get(s),bucketName,s);
             }
         }
     };
 
-    public static void forceBackup(){
-        for (String s :ServersData.keySet()) {
-            writeObjectToAPI(ServersData.get(s),bucketName,s);
-        }
-    }
+    public static void forceBackup(){for(String s:ServersData.keySet()){writeObjectToAPI(ServersData.get(s),bucketName,s);}} //iterates through servers in memory servermap and uploads them to the API
 
-    public static void forceBackup(String ServerID){
-            writeObjectToAPI(ServersData.get(ServerID),bucketName,ServerID);
-    }
-
-    public static String adminID = "258695315299893259";
+    public static void forceBackup(String ServerID){writeObjectToAPI(ServersData.get(ServerID),bucketName,ServerID); } //backup specific server
 
     public static void main(String[] args) {
         if(beta){
             bucketName = "chembucketbeta";
         }
-        //region IBM API Code
+        //region IBM API Initialisation Code
         SDKGlobalConfiguration.IAM_ENDPOINT = COS_AUTH_ENDPOINT;
 
         try {
@@ -129,17 +107,10 @@ public class Main {
         } catch (Exception e) {
             System.out.printf("Error: %s\n", e.getMessage());
         }
-
-
         //endregion
 
-        ///////////user id  question ID     answered?
-            HashMap<String, HashMap<String, Boolean>> questions = new HashMap<>();
-            HashMap<String, ArrayList<String>> triviaBlackList = new HashMap<>();
-            // Log the bot in
-        DiscordApi api;
         if(!beta) {
-            //System.out.println("Starting in Release Mode");
+            System.out.println("Starting in Release Mode");
             api = new DiscordApiBuilder()
                     .setToken(getDiscordAPI(false))
                     .setAllIntents()
@@ -147,206 +118,57 @@ public class Main {
                     .join();
 
         }else{
-            //System.out.println("Starting in Beta Mode");
+            System.out.println("Starting in Beta Mode");
             api = new DiscordApiBuilder()
                     .setToken(getDiscordAPI(true))
                     .setAllIntents()
                     .login()
                     .join();
         }
+        //System.out.println(api.createBotInvite());
         api.updateActivity(ActivityType.CUSTOM,"C.Help // ChemHelp");
-        //api.getGroupChannelsByName()
-            //System.out.println(api.createBotInvite());
-            // Add a listener which marks with "Pong!" if someone writes "!ping"
-            api.addMessageCreateListener(event -> {
 
+        api.addMessageCreateListener(event -> {
 
-                /* Event Template
+            //region Event Template
+                /*
                 if(event.getMessageContent().equalsIgnoreCase("condition")&&event.isServerMessage()){
                     event.getChannel().sendMessage("response");
                     return;
+                }*/
+            //endregion
+
+            if (event.getMessageAuthor().isUser()) {
+
+                //region Should this server have its events logged verbosely?
+                boolean log = false;
+                if (logOnChannel.contains(event.getChannel().getIdAsString())) {
+                    log = true;
                 }
-                 */
-                if(event.getMessageAuthor().isUser()){
-                    boolean log = false;
-                    if(logOnChannel.contains(event.getChannel().getIdAsString())){
-                        log = true;
+                //endregion
+
+                //region Trivia Method
+                if (event.getMessageContent().toLowerCase().startsWith("c.trivia") || event.getMessageContent().toLowerCase().startsWith("chemtrivia")) {
+                    if (event.getMessageContent().trim().equalsIgnoreCase("c.trivia") || event.getMessageContent().trim().equalsIgnoreCase("chemtrivia")) {
+                        if (!userQManager.containsKey(event.getMessageAuthor().getIdAsString()))
+                            new QuestionsUserInstance(event.getMessageAuthor().getIdAsString());
+                        userQManager.get(event.getMessageAuthor().getIdAsString()).createQuestion(event);
+                    } else {
+                        if (!userQManager.containsKey(event.getMessageAuthor().getIdAsString()))
+                            new QuestionsUserInstance(event.getMessageAuthor().getIdAsString());
+                        userQManager.get(event.getMessageAuthor().getIdAsString()).createQuestion(event, String.valueOf(getAmtFromComplexString(event.getMessageContent())));
                     }
+                    return;
+                }
+                //endregion
 
-
-
-                    if (event.getMessageContent().toLowerCase().startsWith("c.trivia")||event.getMessageContent().toLowerCase().startsWith("chemtrivia")) {
-                        try {
-                            String user = event.getMessageAuthor().getIdAsString();
-                            long questionsAmt = Files.find(
-                                    Paths.get("data/questions"),
-                                    1,  // how deep do we want to descend
-                                    (path, attributes) -> attributes.isDirectory()
-                            ).count() - 1; // '-1' because '/tmp' is also counted in
-                            String randomQ = String.valueOf((int)(Math.floor(Math.abs(Math.random()-0.01f)*questionsAmt)));
-                            if(questions.containsKey(user)){
-                                if(questions.get(user).containsKey(randomQ)){
-                                    int count = 0;
-                                    while(questions.get(user).containsKey(randomQ)){
-                                        count++;
-                                        randomQ = String.valueOf((int)(Math.floor(Math.abs(Math.random()-0.01f)*questionsAmt)));
-                                        if (count>100) {
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            if(!event.getMessageContent().equalsIgnoreCase("c.trivia")&&!event.getMessageContent().equalsIgnoreCase("chemtrivia")) randomQ = String.valueOf(getAmtFromComplexString(event.getMessageContent())-1);
-                            if(Integer.parseInt(randomQ)<0||Integer.parseInt(randomQ)>questionsAmt-1){
-                                event.getChannel().sendMessage("Error selecting question: selected question ID does not exist! Picking a random question...");
-                                randomQ = String.valueOf((int)(Math.floor(Math.abs(Math.random()-0.01f)*questionsAmt)));
-                            }
-                            BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(("data/questions/"+randomQ+"/questionData.json"))));
-                            JSONObject obj = new JSONObject(br.readLine());
-                            String type = obj.getString("type");
-                            String question = obj.getString("question");
-                            boolean multi = false;
-                            String answer = obj.getString("correct");
-                            boolean showImage = false;
-                            if(obj.getString("image").equalsIgnoreCase("y")){
-                                //do some thing
-                                showImage = true;
-                            }
-                            ArrayList<String> answers = new ArrayList<>();
-                            if(type.equalsIgnoreCase("Multiple Choice")) {
-                                multi = true;
-                                JSONArray arr = obj.getJSONArray("answers");
-                                answers.add(arr.getJSONObject(0).getString("A"));
-                                answers.add(arr.getJSONObject(0).getString("B"));
-                                answers.add(arr.getJSONObject(0).getString("C"));
-                                answers.add(arr.getJSONObject(0).getString("D"));
-                            }
-                            boolean bmulti = false;
-                            if (type.equalsIgnoreCase("BMultiple Choice")) {
-                                multi = true;
-                                bmulti = true;
-                                JSONArray arr = obj.getJSONArray("answers");
-                                answers.add(arr.getJSONObject(0).getString("A"));
-                                answers.add(arr.getJSONObject(0).getString("B"));
-                                answers.add(arr.getJSONObject(0).getString("C"));
-                                answers.add(arr.getJSONObject(0).getString("D"));
-                            }
-                            int marks = obj.getInt("marks");
-                            JSONObject extra = obj.getJSONObject("data");
-                            String questionID = "Question N/A";
-                            String paper = "Paper N/A";
-                            String outcomes = "Outcomes N/A";
-                            String band = "Band N/A";
-                            String difficulty = "easy";
-                            if (marks>=2) {
-                                difficulty = "medium";
-                                if(marks>=4){
-                                    difficulty = "hard";
-                                }
-                            }
-                            //important! Unhandled exceptions may cause issues later on
-                            try{
-                                questionID = extra.getString("questionID");
-                            }catch(Exception e){}
-                            try{
-                                paper = extra.getString("paper");
-                            }catch(Exception e){}
-                            try{
-                                outcomes = extra.getString("outcomes");
-                            }catch(Exception e){}
-                            try{
-                                band = extra.getString("band");
-                            }catch(Exception e){}
-                            String answersList = "";
-                            if(multi&&!bmulti) answersList = "A: "+answers.get(0)+"\nB: "+answers.get(1)+"\nC: "+answers.get(2)+"\nD: "+answers.get(3)+"\n\n";
-                            System.out.println(question);
-                            String FooterMessage = "You have " + 1.8f * marks + " minutes to answer!\nSource: " + paper + " | " + questionID + " | Outcomes " + outcomes + " | Band " + band + "\nID#" + (Integer.parseInt(randomQ) + 1);
-                            if(!showImage) {
-                                new MessageBuilder()
-                                        .setEmbed(new EmbedBuilder()
-                                                .setTitle(paper +" "+ questionID + " - " + marks + " mark(s)")
-                                                .setDescription(question+"\n\n"+answersList)
-                                                .setFooter(FooterMessage)
-                                                .setColor(getDiffColor(difficulty)))
-                                        .send(event.getChannel());
-                            }else{
-                                new MessageBuilder()
-                                        .setEmbed(new EmbedBuilder()
-                                                .setTitle(paper +" "+ questionID + " - " + marks + " mark(s)")
-                                                .setDescription(question+"\n"+answersList)
-                                                .setImage(new File("data/questions/"+randomQ+"/image.png"))
-                                                .setFooter(FooterMessage)
-                                                .setColor(getDiffColor(difficulty)))
-                                        .send(event.getChannel());
-                            }
-                            String finalRandomQ = randomQ;
-                            if(questions.containsKey(user)){
-                                if(questions.get(user).containsKey(finalRandomQ)){
-                                    questions.get(user).replace(finalRandomQ,false);
-                                }else{
-                                    questions.get(user).put(finalRandomQ,false);
-                                }
-                            }else{
-                                questions.put(user, new HashMap<String, Boolean>());
-                                questions.get(user).put(finalRandomQ,false);
-                            }
-                            boolean finalMulti = multi;
-                            api.addMessageCreateListener(event2 -> {
-                                //System.out.println("Detected message event!");
-                                //System.out.println(event.getMessageAuthor().getIdAsString()+"\n"+event2.getMessageAuthor().getIdAsString());
-                                if(event2.getMessageAuthor().getIdAsString().trim().equals(event.getMessageAuthor().getIdAsString().trim()) &&!questions.get(user).get(finalRandomQ)){
-                                    //System.out.println("passed check 1");
-                                    if(finalMulti) {
-                                        //System.out.println("passed check 2");
-                                        if (event2.getMessageContent().trim().equalsIgnoreCase(answer)) {
-                                          //  System.out.println("passed check 3");
-                                            questions.get(user).replace(finalRandomQ,true);
-                                            event2.getChannel().sendMessage(":white_check_mark: Correct! Excellent job! (+" + marks + " marks)");
-                                            if(event.isServerMessage()) {
-                                                awardMarks(api, event2.getServer().get().getIdAsString(), event2.getMessageAuthor().getIdAsString(), marks);
-                                            }
-                                        }else{
-                                            String s = "abcd";
-                                            if(s.contains(event2.getMessageContent().toLowerCase().trim())){
-                                                questions.get(user).replace(finalRandomQ,true);
-                                                event2.getChannel().sendMessage(":x: Incorrect, the answer was "+answer+". Better luck next time!");
-                                            }
-                                        }
-                                    }else{
-                                        //do extended/short response keyword check method here
-                                    }
-                                }
-                            }).removeAfter((long) (marks*60f*1.8f), TimeUnit.SECONDS)
-                                    .addRemoveHandler(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            System.out.println("Question timed out!");
-                                            if(!questions.get(user).get(finalRandomQ)) {
-                                                try {
-                                                    event.getChannel().sendMessage("Time's up, "+api.getUserById(user).get().getMentionTag()+"! The answer was: " + answer);
-                                                } catch (InterruptedException e) {
-                                                    e.printStackTrace();
-                                                } catch (ExecutionException e) {
-                                                    e.printStackTrace();
-                                                }
-                                            }
-                                            questions.remove(finalRandomQ);
-                                        }
-                                    });
-                        } catch (IOException e) {
-                            e.printStackTrace();
-
-                        }
-                        return;
-                    }
-
-
-                if((event.getMessageContent().equalsIgnoreCase("c.top")||event.getMessageContent().equalsIgnoreCase("chemtop"))&&event.isServerMessage()){
-                    if(!ServersData.containsKey(event.getServer().get().getIdAsString())){
-                        if(testForObject(event.getServer().get().getIdAsString())) {
+                //region Leaderboard Method
+                if ((event.getMessageContent().equalsIgnoreCase("c.top") || event.getMessageContent().equalsIgnoreCase("chemtop")) && event.isServerMessage()) {
+                    if (!ServersData.containsKey(event.getServer().get().getIdAsString())) {
+                        if (testForObject(event.getServer().get().getIdAsString())) {
                             ServersData.put(event.getServer().get().getIdAsString(), (HashMap<String, HashMap<String, String>>) getObjectFromAPI(bucketName, event.getServer().get().getIdAsString()));
-                        }else{
-                            createChannelProfile(api, event.getMessageAuthor().getIdAsString(), event.getServer().get().getIdAsString(),new HashMap<>());
+                        } else {
+                            createChannelProfile(api, event.getMessageAuthor().getIdAsString(), event.getServer().get().getIdAsString(), new HashMap<>());
                         }
                     }
                     String firstPlayer = "";
@@ -356,63 +178,67 @@ public class Main {
                     int secondValue = 0;
                     int thirdValue = 0;
                     //awardOreos(api, event.getServer().get().getIdAsString(),api.getYourself().getIdAsString(),0);
-                    createUserProfile(api.getYourself().getIdAsString(),event.getServer().get().getIdAsString(),new HashMap<>());
+                    createUserProfile(api.getYourself().getIdAsString(), event.getServer().get().getIdAsString(), new HashMap<>());
                     TempUserData = ServersData.get(event.getServer().get().getIdAsString());
-                    for (User u: event.getServer().get().getMembers()) {
+                    for (User u : event.getServer().get().getMembers()) {
 //                        System.out.println(ServersData);
 //                        System.out.println(event.getServer().get().getMembers());
                         String user = u.getIdAsString();
                         //System.out.println(event.getServer().get().getMemberCount());
-                        if(TempUserData.containsKey(user)) {
-                           // System.out.println(u.getDisplayName(event.getServer().get()));
-                                int marks = Integer.parseInt(ServersData.get(event.getServer().get().getIdAsString()).get(u.getIdAsString()).get("marks"));
-                                if (marks > firstValue) {
+                        if (TempUserData.containsKey(user)) {
+                            // System.out.println(u.getDisplayName(event.getServer().get()));
+                            int marks = Integer.parseInt(ServersData.get(event.getServer().get().getIdAsString()).get(u.getIdAsString()).get("marks"));
+                            if (marks > firstValue) {
+                                thirdPlayer = secondPlayer;
+                                thirdValue = secondValue;
+                                secondPlayer = firstPlayer;
+                                secondValue = firstValue;
+                                firstPlayer = u.getDisplayName(event.getServer().get());
+                                firstValue = marks;
+                            } else {
+                                if (marks > secondValue) {
                                     thirdPlayer = secondPlayer;
                                     thirdValue = secondValue;
-                                    secondPlayer = firstPlayer;
-                                    secondValue = firstValue;
-                                    firstPlayer = u.getDisplayName(event.getServer().get());
-                                    firstValue = marks;
-                                }else{
-                                    if(marks>secondValue){
-                                        thirdPlayer = secondPlayer;
-                                        thirdValue = secondValue;
-                                        secondPlayer = u.getDisplayName(event.getServer().get());
-                                        secondValue = marks;
-                                    }else{
-                                        if(marks>thirdValue){
-                                            thirdPlayer = u.getDisplayName(event.getServer().get());
-                                            thirdValue = marks;
-                                        }
+                                    secondPlayer = u.getDisplayName(event.getServer().get());
+                                    secondValue = marks;
+                                } else {
+                                    if (marks > thirdValue) {
+                                        thirdPlayer = u.getDisplayName(event.getServer().get());
+                                        thirdValue = marks;
                                     }
                                 }
+                            }
                         }
                     }
                     new MessageBuilder()
                             .setEmbed(new EmbedBuilder()
-                            .setTitle(event.getServer().get().getName() + " Leaderboard:")
-                            .addField("1. " + firstPlayer, firstValue+" marks")
-                            .addField("2. " + secondPlayer, secondValue+" marks")
-                            .addField("3. " + thirdPlayer, thirdValue+" marks")
+                                    .setTitle(event.getServer().get().getName() + " Leaderboard:")
+                                    .addField("1. " + firstPlayer, firstValue + " marks")
+                                    .addField("2. " + secondPlayer, secondValue + " marks")
+                                    .addField("3. " + thirdPlayer, thirdValue + " marks")
                             ).send(event.getChannel());
                     return;
                 }
+                //endregion
 
-                if((event.getMessageContent().equalsIgnoreCase("c.marks")||event.getMessageContent().equalsIgnoreCase("chemmarks"))){
-                    if(event.isServerMessage()) {
+                //region Marks Method
+                if ((event.getMessageContent().equalsIgnoreCase("c.marks") || event.getMessageContent().equalsIgnoreCase("chemmarks"))) {
+                    if (event.isServerMessage()) {
                         awardMarks(api, event.getServer().get().getIdAsString(), event.getMessageAuthor().getIdAsString(), 0);
                         event.getChannel().sendMessage(":bookmark_tabs: You currently have **" + ServersData.get(event.getServer().get().getIdAsString()).get(event.getMessageAuthor().getIdAsString()).get("marks") + "** marks!");
                         return;
-                    }else{
+                    } else {
                         event.getChannel().sendMessage("Sorry! The marks feature is currently only supported in servers, and not private DMs.");
                     }
                 }
+                //endregion
 
-                if(event.getMessageContent().toLowerCase().startsWith("c.help")||event.getMessageContent().toLowerCase().startsWith("chemhelp")){
-                    if(event.getMessageContent().equalsIgnoreCase("c.help")||event.getMessageContent().equalsIgnoreCase("chemhelp")) {
+                //region Help Method
+                if (event.getMessageContent().toLowerCase().startsWith("c.help") || event.getMessageContent().toLowerCase().startsWith("chemhelp")) {
+                    if (event.getMessageContent().equalsIgnoreCase("c.help") || event.getMessageContent().equalsIgnoreCase("chemhelp")) {
                         new MessageBuilder()
                                 .setEmbed(new EmbedBuilder()
-                                        .setTitle("Commands List - ChemBot V0.0.5")
+                                        .setTitle("Commands List - ChemBot V0.0.6")
                                         .setDescription("*Use C.[Command] or Chem[Command] to send a command.\nFor example, C.Help opens this menu*" +
                                                 "\n\n:grey_question: ``Help`` Try C.help help for more info!" +
                                                 "\n\n:newspaper: ``Marks`` see how many marks you have" +
@@ -422,8 +248,8 @@ public class Main {
                                                 "\n\n*The ChemistryBot Project and its code is open source and available online [here](https://github.com/iGamingMango/ChemBot)*")
                                         .setColor(Color.darkGray))
                                 .send(event.getChannel());
-                    }else{
-                        if(event.getMessageContent().toLowerCase().contains("marks")){
+                    } else {
+                        if (event.getMessageContent().toLowerCase().contains("marks")) {
                             new MessageBuilder()
                                     .setEmbed(new EmbedBuilder()
                                             .setTitle(":newspaper: ``C.Marks / ChemMarks``")
@@ -438,7 +264,7 @@ public class Main {
                             return;
                         }
 
-                        if(event.getMessageContent().toLowerCase().substring(8).contains("help")){
+                        if (event.getMessageContent().toLowerCase().substring(8).contains("help")) {
                             new MessageBuilder()
                                     .setEmbed(new EmbedBuilder()
                                             .setTitle(":grey_question: ``C.Help / ChemHelp``")
@@ -447,7 +273,7 @@ public class Main {
                                     .send(event.getChannel());
                             return;
                         }
-                        if(event.getMessageContent().toLowerCase().contains("test")){
+                        if (event.getMessageContent().toLowerCase().contains("test")) {
                             new MessageBuilder()
                                     .setEmbed(new EmbedBuilder()
                                             .setTitle(":page_facing_up: ``Test`` (Work In Progress)")
@@ -456,7 +282,7 @@ public class Main {
                                     .send(event.getChannel());
                             return;
                         }
-                        if(event.getMessageContent().toLowerCase().contains("top")){
+                        if (event.getMessageContent().toLowerCase().contains("top")) {
                             new MessageBuilder()
                                     .setEmbed(new EmbedBuilder()
                                             .setTitle(":stopwatch: ``Top``")
@@ -465,7 +291,7 @@ public class Main {
                                     .send(event.getChannel());
                             return;
                         }
-                        if(event.getMessageContent().toLowerCase().contains("trivia")){
+                        if (event.getMessageContent().toLowerCase().contains("trivia")) {
                             new MessageBuilder()
                                     .setEmbed(new EmbedBuilder()
                                             .setTitle(":test_tube: ``Trivia``")
@@ -483,12 +309,15 @@ public class Main {
                     }
                     return;
                 }
-                if(event.getMessageAuthor().getIdAsString().contentEquals(adminID)){
+                //endregion
+
+                //region Debugging Methods
+                if (event.getMessageAuthor().getIdAsString().contentEquals(adminID)) {
                     String content = event.getMessageContent();
-                    if(log) System.out.println("passed ID check");
-                    if(!debug) {
-                        if(log) System.out.println("not in debug mode");
-                        if(content.toLowerCase().startsWith("enable")) {
+                    if (log) System.out.println("passed ID check");
+                    if (!debug) {
+                        if (log) System.out.println("not in debug mode");
+                        if (content.toLowerCase().startsWith("enable")) {
                             if (content.toLowerCase().contains("debug") || content.toLowerCase().contains("debugging")) {
                                 event.getChannel().sendMessage("Access Granted, enabling debug mode");
                                 if (log) System.out.println("enabling debug mode");
@@ -501,10 +330,10 @@ public class Main {
                                 }
                             }
                         }
-                    }else{
+                    } else {
 
 
-                        if(content.toLowerCase().startsWith("enable")) {
+                        if (content.toLowerCase().startsWith("enable")) {
                             if (content.toLowerCase().contains("log") || content.toLowerCase().contains("logging")) {
                                 event.getChannel().sendMessage("Enabling logging for this channel");
                                 if (!logOnChannel.contains(event.getChannel().getIdAsString())) {
@@ -512,11 +341,15 @@ public class Main {
                                 }
                             }
                         }
-                        if(content.toLowerCase().startsWith("disable")){
-                            if(content.toLowerCase().contains("debug") || content.toLowerCase().contains("debugging")){
-                                if(!log) {
+                        if (content.toLowerCase().trim().startsWith("forcebackup")) {
+                            forceBackup();
+                            event.getChannel().sendMessage("Backed up data to server!");
+                        }
+                        if (content.toLowerCase().startsWith("disable")) {
+                            if (content.toLowerCase().contains("debug") || content.toLowerCase().contains("debugging")) {
+                                if (!log) {
                                     event.getChannel().sendMessage("Understood, disabling debug mode");
-                                }else{
+                                } else {
                                     event.getChannel().sendMessage("Understood, disabling debug mode and safety disabling logging");
                                     logOnChannel.remove(event.getChannel().getIdAsString());
                                 }
@@ -529,37 +362,38 @@ public class Main {
                                 }
                             }
                         }
-                        if(content.toLowerCase().startsWith("take")&&(content.toLowerCase().contains("marks")||content.toLowerCase().contains("mark"))){
+                        if (content.toLowerCase().startsWith("take") && (content.toLowerCase().contains("marks") || content.toLowerCase().contains("mark"))) {
                             int amount = getAmtFromComplexString(content);
-                            for (User u: event.getMessage().getMentionedUsers()) {
-                                if(event.getServer().get().getMembers().contains(u)){
-                                    awardMarks(api,event.getServer().get().getIdAsString(),u.getIdAsString(),-amount);
+                            for (User u : event.getMessage().getMentionedUsers()) {
+                                if (event.getServer().get().getMembers().contains(u)) {
+                                    awardMarks(api, event.getServer().get().getIdAsString(), u.getIdAsString(), -amount);
                                 }
                             }
                             ArrayList<String> users = new ArrayList<>();
-                            for (User u: event.getMessage().getMentionedUsers()) {
+                            for (User u : event.getMessage().getMentionedUsers()) {
                                 users.add(String.valueOf(u.getDisplayName(event.getServer().get())));
                             }
-                            event.getChannel().sendMessage("taken "+ amount + " answer(s) away from " + users);
+                            event.getChannel().sendMessage("taken " + amount + " answer(s) away from " + users);
                         }
 
-                        if(content.toLowerCase().startsWith("give")&&(content.toLowerCase().contains("marks")||content.toLowerCase().contains("mark"))){
+                        if (content.toLowerCase().startsWith("give") && (content.toLowerCase().contains("marks") || content.toLowerCase().contains("mark"))) {
                             int amount = getAmtFromComplexString(content);
-                            for (User u: event.getMessage().getMentionedUsers()) {
-                                if(event.getServer().get().getMembers().contains(u)){
-                                    awardMarks(api,event.getServer().get().getIdAsString(),u.getIdAsString(),amount);
+                            for (User u : event.getMessage().getMentionedUsers()) {
+                                if (event.getServer().get().getMembers().contains(u)) {
+                                    awardMarks(api, event.getServer().get().getIdAsString(), u.getIdAsString(), amount);
                                 }
                             }
                             ArrayList<String> users = new ArrayList<>();
-                            for (User u: event.getMessage().getMentionedUsers()) {
+                            for (User u : event.getMessage().getMentionedUsers()) {
                                 users.add(String.valueOf(u.getDisplayName(event.getServer().get())));
                             }
-                            event.getChannel().sendMessage("given "+ amount + " marks to " + users);
+                            event.getChannel().sendMessage("given " + amount + " marks to " + users);
                         }
                     }
                 }
-
-            }});
+                //endregion
+            }
+        });
             backupState.scheduleAtFixedRate(backup,backupMinutes*60L*1000L,backupMinutes*60L*1000L);
     }
 
@@ -574,7 +408,7 @@ public class Main {
         return 0;
     }
 
-    public static int getAmtFromComplexString(String s){
+    public static int getAmtFromComplexString(@NotNull String s){
         int index = 0;
         char last = '0';
         int length = 0;
@@ -643,7 +477,7 @@ public class Main {
         }else{
             //System.out.println("not in servermap, checking if server is present in API");
             if(testForObject(serverID)){
-                //System.out.println("located server in API, adding to servermap and incrementing oreos");
+                //System.out.println("located server in API, adding to servermap and incrementing marks");
                 ServersData.put(serverID, (HashMap<String, HashMap<String, String>>) getObjectFromAPI(bucketName, serverID));
                 int temp = Integer.parseInt(ServersData.get(serverID).get(UserID).get("marks"));
                 temp+=amount;
@@ -684,6 +518,30 @@ public class Main {
         writeObjectToAPI(ServersData.get(serverID), bucketName, serverID);
     }
 
+    public static Color getDiffColor(String diff){
+        if(Objects.equals(diff, "easy")){
+            return Color.blue;
+        }
+        if(Objects.equals(diff, "medium")){
+            return Color.yellow;
+        }
+        if(Objects.equals(diff, "hard")){
+            return Color.red;
+        }
+        return Color.black;
+    }
 
+    public static long getQuestionsAmount() {
+        try {
+            return Files.find(
+                    Paths.get("data/questions"),
+                    1,  // how deep do we want to descend
+                    (path, attributes) -> attributes.isDirectory()
+            ).count() - 1;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return 0;
+        }
+    }
 
 }

@@ -27,7 +27,7 @@ jar {
 }
 
 group 'org.example'
-version '0.0.5'
+version '0.0.6'
 
 sourceCompatibility = 1.8
 
@@ -52,6 +52,7 @@ dependencies {
     extraLibs 'org.json:json:20171018'
     extraLibs 'org.jsoup:jsoup:1.13.1'
     extraLibs 'com.ibm.cos:ibm-cos-java-sdk:2.8.0'
+    implementation 'org.jetbrains:annotations:15.0'
 }
 
 
