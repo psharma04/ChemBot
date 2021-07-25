@@ -9,14 +9,15 @@ import org.javacord.api.entity.activity.ActivityType;
 import org.javacord.api.entity.message.MessageBuilder;
 import org.javacord.api.entity.message.embed.EmbedBuilder;
 import org.javacord.api.entity.user.User;
-import org.jetbrains.annotations.NotNull;
+import org.json.JSONObject;
 
 import java.awt.*;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+import java.util.logging.ConsoleHandler;
 
 import static me.inertia.chembot.APIMethods.*;
 
@@ -77,6 +78,7 @@ public class Main {
     public static boolean beta = true;
     public static boolean debug = false;
     public static ArrayList<String> logOnChannel = new ArrayList<>();
+    public static Set<String> outcomeIDs;
     //endregion
 
     static Timer backupState = new Timer();
@@ -89,11 +91,42 @@ public class Main {
         }
     };
 
+    public static void updateOutcomeSet(){
+        File OutcomesPath = new File("data/questions/"+"OutcomeDefs.txt");
+        BufferedReader obr = null;
+
+        try {
+            obr = new BufferedReader(new InputStreamReader(new FileInputStream(OutcomesPath)));
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+        try {
+            JSONObject outcomes = new JSONObject(obr.readLine());
+            outcomeIDs = outcomes.keySet();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     public static void forceBackup(){for(String s:ServersData.keySet()){writeObjectToAPI(ServersData.get(s),bucketName,s);}} //iterates through servers in memory servermap and uploads them to the API
 
     public static void forceBackup(String ServerID){writeObjectToAPI(ServersData.get(ServerID),bucketName,ServerID); } //backup specific server
 
     public static void main(String[] args) {
+        File OutcomesPath = new File("data/questions/"+"OutcomeDefs.txt");
+        BufferedReader obr = null;
+        try {
+            obr = new BufferedReader(new InputStreamReader(new FileInputStream(OutcomesPath)));
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+        try {
+            JSONObject outcomes = new JSONObject(obr.readLine());
+            outcomeIDs = outcomes.keySet();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
         if(beta){
             bucketName = "chembucketbeta";
         }
@@ -394,7 +427,9 @@ public class Main {
                 //endregion
             }
         });
-            backupState.scheduleAtFixedRate(backup,backupMinutes*60L*1000L,backupMinutes*60L*1000L);
+        console();
+        backupState.scheduleAtFixedRate(backup,backupMinutes*60L*1000L,backupMinutes*60L*1000L);
+
     }
 
     public static int getMarks(String Server, String User){
@@ -408,7 +443,7 @@ public class Main {
         return 0;
     }
 
-    public static int getAmtFromComplexString(@NotNull String s){
+    public static int getAmtFromComplexString(String s){
         int index = 0;
         char last = '0';
         int length = 0;
@@ -529,6 +564,18 @@ public class Main {
             return Color.red;
         }
         return Color.black;
+    }
+
+    public static void console(){
+        Scanner sc = new Scanner(System.in);
+        //System.out.print(":>");
+        System.out.print("");
+        String input = sc.nextLine();
+        if(input.equalsIgnoreCase("start questionbuilder")||input.equalsIgnoreCase("start qb")) {
+            System.out.println("Starting QuestionBuilder...");
+            QuestionBuilderManager.startBuilder();
+        }
+        console();
     }
 
     public static long getQuestionsAmount() {

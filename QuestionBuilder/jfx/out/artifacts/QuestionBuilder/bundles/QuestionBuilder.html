@@ -1,0 +1,43 @@
+<html><head>
+  <SCRIPT src="http://java.com/js/dtjava.js"></SCRIPT>
+<script>
+    function launchApplication(jnlpfile) {
+        dtjava.launch(            {
+                url : 'QuestionBuilder.jnlp'
+            },
+            {
+                javafx : '8.0+'
+            },
+            {}
+        );
+        return false;
+    }
+</script>
+
+<script>
+    function javafxEmbedQuestionBuilder_id() {
+        dtjava.embed(
+            {
+                id : 'QuestionBuilder_id',
+                url : 'QuestionBuilder.jnlp',
+                placeholder : 'javafx-app-placeholder',
+                width : '600',
+                height : '400'
+            },
+            {
+                javafx : '8.0+'
+            },
+            {}
+        );
+    }
+    <!-- Embed FX application into web page once page is loaded -->
+    dtjava.addOnloadCallback(javafxEmbedQuestionBuilder_id);
+</script>
+
+</head><body>
+<h2>Test page for <b>QuestionBuilder</b></h2>
+  <b>Webstart:</b> <a href='QuestionBuilder.jnlp' onclick="return launchApplication('QuestionBuilder.jnlp');">click to launch this app as webstart</a><br><hr><br>
+
+  <!-- Applet will be inserted here -->
+  <div id='javafx-app-placeholder'></div>
+</body></html>

@@ -8,32 +8,33 @@ import org.json.JSONObject;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static me.inertia.chembot.Main.getDiffColor;
 
 class QuestionInstance {
-    String user;
-    //String type;
-    String question;
-    String answer;
-    boolean showImage;
-    boolean isMultipleChoice;
+
+    //region Variables
+    String user, question, answer, footerMessage, questionInstructions, sampleResponse;
+    String QID;
+    boolean showImage, isMultipleChoice;
     boolean isAnswered = false;
     String questionID = "Question N/A";
     String paper = "Paper N/A";
     String outcomes = "Outcomes N/A";
     String band = "Band N/A";
     String difficulty = "easy";
-    String answersList;
-    String footerMessage;
     QuestionType type;
     CertainMessageEvent event;
+    ArrayList<String> keyPhrases = new ArrayList<>();
     int marks;
-    String QID;
     QuestionsUserInstance parent;
     QuestionInstance instance = this;
+    //endregion
 
     public QuestionInstance(QuestionsUserInstance parent, String ID, CertainMessageEvent event){
         this.parent = parent;
@@ -58,16 +59,20 @@ class QuestionInstance {
         }
         if(obj.getString("type").equalsIgnoreCase("multiple choice")) type = QuestionType.MULTICHOICE;
         if(obj.getString("type").equalsIgnoreCase("bmultiple choice")) type = QuestionType.NO_LIST_ANS_CHOICE;
+        if(obj.getString("type").equalsIgnoreCase("short response")) type = QuestionType.SHORTANS;
+        if(obj.getString("type").equalsIgnoreCase("extresponse")) type = QuestionType.LONGANS;
+        if(type == QuestionType.SHORTANS){
+            sampleResponse = obj.getString("sample");
+            String[] temp =  (obj.getString("keywords").split(","));
+            Collections.addAll(keyPhrases, temp);
+        }
         question = obj.getString("question");
         isMultipleChoice = false;
-        answer = obj.getString("correct");
         showImage = false;
-        if(obj.getString("image").equalsIgnoreCase("y")){
-            //do some thing
-            showImage = true;
-        }
+        if(obj.getString("image").equalsIgnoreCase("y")) showImage = true;
         ArrayList<String> answers = new ArrayList<>();
         if(type == QuestionType.MULTICHOICE) {
+            answer = obj.getString("correct");
             JSONArray arr = obj.getJSONArray("answers");
             answers.add(arr.getJSONObject(0).getString("A"));
             answers.add(arr.getJSONObject(0).getString("B"));
@@ -75,6 +80,7 @@ class QuestionInstance {
             answers.add(arr.getJSONObject(0).getString("D"));
         }
         if (type==QuestionType.NO_LIST_ANS_CHOICE) {
+            answer = obj.getString("correct");
             JSONArray arr = obj.getJSONArray("answers");
             answers.add(arr.getJSONObject(0).getString("A"));
             answers.add(arr.getJSONObject(0).getString("B"));
@@ -93,10 +99,10 @@ class QuestionInstance {
         paper = extra.getString("paper");
         band = extra.getString("band");
         outcomes = extra.getString("outcomes");
-        answersList = "";
-        if(type==QuestionType.MULTICHOICE) answersList = "A: "+answers.get(0)+"\nB: "+answers.get(1)+"\nC: "+answers.get(2)+"\nD: "+answers.get(3)+"\n\n";
-        System.out.println(question);
-        footerMessage = "You have " + 1.8f * marks + " minutes to answer!\nSource: " + paper + " | " + questionID + " | Outcomes " + outcomes + " | Band " + band + "\nID#" + (Integer.parseInt(ID) + 1);
+        questionInstructions = "";
+        if(type==QuestionType.MULTICHOICE) questionInstructions = "A: "+answers.get(0)+"\nB: "+answers.get(1)+"\nC: "+answers.get(2)+"\nD: "+answers.get(3)+"\n\n";
+        if(type==QuestionType.LONGANS||type==QuestionType.SHORTANS) questionInstructions = "\n**Start your message with a '!' to submit the message as your response**";
+        footerMessage = "You have " + Math.round(18f * marks)/10f + " minutes to answer!\nSource: " + paper + " | " + questionID + " | Outcomes " + outcomes + " | Band " + band + "\nID#" + (Integer.parseInt(ID) + 1);
         if(showImage)sendImageMessage();
         if(!showImage)sendMessage();
         createAnswerListener();
@@ -106,7 +112,7 @@ class QuestionInstance {
         new MessageBuilder()
                 .setEmbed(new EmbedBuilder()
                         .setTitle(paper +" "+ questionID + " - " + marks + " mark(s)")
-                        .setDescription(question+"\n\n"+answersList)
+                        .setDescription(question+"\n\n"+ questionInstructions)
                         .setFooter(footerMessage)
                         .setColor(getDiffColor(difficulty)))
                 .send(event.getChannel());
@@ -116,9 +122,18 @@ class QuestionInstance {
         new MessageBuilder()
                 .setEmbed(new EmbedBuilder()
                         .setTitle(paper +" "+ questionID + " - " + marks + " mark(s)")
-                        .setDescription(question+"\n"+answersList)
+                        .setDescription(question+"\n"+ questionInstructions)
                         .setImage(new File("data/questions/"+QID+"/image.png"))
                         .setFooter(footerMessage)
+                        .setColor(getDiffColor(difficulty)))
+                .send(event.getChannel());
+    }
+
+    private void sendSampleResponse(){
+        new MessageBuilder()
+                .setEmbed(new EmbedBuilder()
+                        .setTitle(paper +" "+ questionID + " Sample Response")
+                        .setDescription(sampleResponse)
                         .setColor(getDiffColor(difficulty)))
                 .send(event.getChannel());
     }
@@ -150,6 +165,35 @@ class QuestionInstance {
                     }
                 }else{
                     //do extended/short response keyword check method here
+                    if(type.equals(QuestionType.SHORTANS)){
+                        if(!event2.getMessageContent().startsWith("!")) return;
+                        isAnswered = true;
+                        float total = keyPhrases.size();
+                        float match = 0;
+                        //ArrayList<String> messageWords = (ArrayList<String>) Arrays.asList(event2.getMessageContent().toLowerCase().replaceAll("\\.|,","").split(" "));
+                        String userResponse = event2.getMessageContent().toLowerCase().replaceAll("\\.|,","");
+                        for (String s:keyPhrases) {
+                            if(userResponse.contains(s.toLowerCase())) match++;
+                        }
+                        String response = "Oops! Something has gone wrong on my end and I'm not quite sure what to say here, sorry!";
+                        String estimatedMark = "Your estimated mark based on your use of keywords/phrases is: "+Math.round((match/total*100))+"%. ("+Math.round((match/total)*(float)marks)+"/"+marks+" marks)";
+                        if(match/total<0.4) response = "You appear to be missing a fair amount of keywords, try to review the sample responses to get a better idea of what the examiners are looking for!";
+                        if(match/total>=0.4) response = "You're hitting some of the keywords, but you are forgetting to mention some critical information to really push yourself further, keep developing your knowledge!";
+                        if(match/total>=0.7) response = "You appear to be comfortable with the topic at hand, you just need to get a better understanding of what 'meta-language' the examiner is looking for!";
+                        if(match/total>=0.9) response = "You've basically got it down pat, so long as you maintain and reinforce your current level of knowledge, you'll be golden!";
+                        new MessageBuilder()
+                                .setEmbed(new EmbedBuilder()
+                                        .setTitle(paper +" "+ questionID + " - " + marks + " mark(s)")
+                                        .setDescription("Your response matched with roughly "+(int)match+" out of the "+(int)total+" key words/phrases.\n"+estimatedMark+"\n\n"+response)
+                                        .setFooter("Please remember that feedback is only based off of keywords and does not take into account most synonyms, spelling errors, and typos. The bot cannot fact-check, only tell you if you're using the right terminology.")
+                                        .setColor(getDiffColor(difficulty)))
+                                .send(event2.getChannel());
+                        sendSampleResponse();
+                        return;
+                    }
+                    if(type.equals(QuestionType.LONGANS)){
+
+                    }
                 }
             }
         }).removeAfter((long) (marks*60f*1.8f), TimeUnit.SECONDS)
@@ -159,10 +203,13 @@ class QuestionInstance {
                         System.out.println("Question timed out!");
                         if(!isAnswered) {
                             try {
-                                event.getChannel().sendMessage("Time's up, "+Main.api.getUserById(user).get().getMentionTag()+"! The answer was: " + answer);
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            } catch (ExecutionException e) {
+                                if(type!=QuestionType.SHORTANS) {
+                                    event.getChannel().sendMessage("Time's up, " + Main.api.getUserById(user).get().getMentionTag() + "! The answer was: " + answer);
+                                }else{
+                                    event.getChannel().sendMessage("Time's up! Here's a sample response of what your answer should look like:");
+                                    sendSampleResponse();
+                                }
+                            } catch (InterruptedException | ExecutionException e) {
                                 e.printStackTrace();
                             }
                         }

@@ -1,0 +1,23 @@
+<component name="ArtifactManager">
+  <artifact type="javafx" name="JavaFXApp">
+    <output-path>$PROJECT_DIR$/out/artifacts/JavaFXApp</output-path>
+    <properties id="javafx-properties">
+      <options>
+        <option name="appClass" value="sample.Main" />
+        <option name="convertCss2Bin" value="true" />
+        <option name="description" value="Small companion-app for use with ChemBot" />
+        <option name="height" value="450" />
+        <option name="htmlPlaceholderId" value="" />
+        <option name="title" value="Question Builder" />
+        <option name="vendor" value="Inertia" />
+        <option name="version" value="" />
+        <option name="width" value="800" />
+      </options>
+    </properties>
+    <root id="root">
+      <element id="archive" name="JavaFXApp.jar">
+        <element id="module-output" name="QuestionBuilder" />
+      </element>
+    </root>
+  </artifact>
+</component>
