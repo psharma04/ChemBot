@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import static me.inertia.chembot.Main.awardMarks;
 import static me.inertia.chembot.Main.getDiffColor;
 
 class QuestionInstance {
@@ -171,11 +172,13 @@ class QuestionInstance {
                         float total = keyPhrases.size();
                         float match = 0;
                         //ArrayList<String> messageWords = (ArrayList<String>) Arrays.asList(event2.getMessageContent().toLowerCase().replaceAll("\\.|,","").split(" "));
-                        String userResponse = event2.getMessageContent().toLowerCase().replaceAll("\\.|,","");
+                        String userResponse = event2.getMessageContent().toLowerCase().replaceAll("\\.|,!","");
                         for (String s:keyPhrases) {
-                            if(userResponse.contains(s.toLowerCase())) match++;
+                            if(userResponse.contains(s.toLowerCase())){ match++;
+                            System.out.println("Matched "+s);}
                         }
                         String response = "Oops! Something has gone wrong on my end and I'm not quite sure what to say here, sorry!";
+                        awardMarks(Main.api, event2.getServer().get().getIdAsString(), event2.getMessageAuthor().getIdAsString(), Math.round((match/total)*(float)marks));
                         String estimatedMark = "Your estimated mark based on your use of keywords/phrases is: "+Math.round((match/total*100))+"%. ("+Math.round((match/total)*(float)marks)+"/"+marks+" marks)";
                         if(match/total<0.4) response = "You appear to be missing a fair amount of keywords, try to review the sample responses to get a better idea of what the examiners are looking for!";
                         if(match/total>=0.4) response = "You're hitting some of the keywords, but you are forgetting to mention some critical information to really push yourself further, keep developing your knowledge!";

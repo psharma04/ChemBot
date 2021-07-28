@@ -75,7 +75,7 @@ public class Main {
     //endregion
 
     //region miscellaneous
-    public static boolean beta = true;
+    public static boolean beta = false;
     public static boolean debug = false;
     public static ArrayList<String> logOnChannel = new ArrayList<>();
     public static Set<String> outcomeIDs;
@@ -158,7 +158,7 @@ public class Main {
                     .login()
                     .join();
         }
-        //System.out.println(api.createBotInvite());
+        System.out.println(api.createBotInvite());
         api.updateActivity(ActivityType.CUSTOM,"C.Help // ChemHelp");
 
         api.addMessageCreateListener(event -> {
